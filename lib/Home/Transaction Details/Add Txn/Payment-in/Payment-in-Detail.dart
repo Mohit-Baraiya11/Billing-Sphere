@@ -326,8 +326,7 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
       String newPhoneNumber,
       String newCustomerName,
       double newAmount
-      ) async
-  {
+      ) async {
     DatabaseReference partiesRef = FirebaseDatabase.instance.ref("users/$userId/Parties");
 
     // 🟢 Adjust old party's total_amount
