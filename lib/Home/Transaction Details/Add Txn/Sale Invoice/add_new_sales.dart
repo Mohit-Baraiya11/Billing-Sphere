@@ -1,4 +1,6 @@
 
+import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,7 +8,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:remixicon/remixicon.dart';
 
 import '../../../BottomNavbar_save_buttons.dart';
@@ -41,6 +43,23 @@ class AddNewSales extends State<Add_new_Sales> {
   String type = "Credit";
   String? image;
   bool isExpanded = true;
+  Future<void> uploadImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      File imageFile = File(pickedFile.path);
+      List<int> imageBytes = await imageFile.readAsBytes();
+      String base64Image = base64Encode(imageBytes);
+      if(base64Image!=null){
+        setState(() {
+          image = base64Image;
+        });
+      }
+    }
+  }
+
+
   double calculateTotalQuantity() {
     return addedItems.fold(0.0, (sum, item) => sum + (double.tryParse(item["quantity"].toString()) ?? 0.0));
   }
@@ -70,62 +89,12 @@ class AddNewSales extends State<Add_new_Sales> {
       double subtotal = rate * quantity;
       double discount = double.tryParse(item["discount"].toString()) ?? 0.0;
       double discountAmt = (subtotal * discount) / 100;
-      double tax = double.tryParse(item["tax"].toString()) ?? 0.0;
+      double tax = double.tryParse(item["taxValue"].toString()) ?? 0.0;
       double taxAmt = ((subtotal - discountAmt) * tax) / 100;
       total_amount.text = (sum + (subtotal - discountAmt + taxAmt)).toString();
       return sum + (subtotal - discountAmt + taxAmt);
     });
   }
-
-
-  Future<void> savePaymentInData(String userId) async {
-    DatabaseReference paymentInRef = FirebaseDatabase.instance.ref("users/$userId/Transactions/");
-
-    // Generate a unique transaction ID
-    String transactionId = paymentInRef.push().key!;
-
-    // Prepare payment data
-    Map<String, dynamic> paymentData = {
-      "type": "sale",
-      "invoice_no": invoice_no,
-      "date": "${time.day}/${time.month}/${time.year}",
-      "customer": customer_controller.text ?? "",
-      "phone": phonenumber_controller.text,
-      "total_amount":total_amount.text,
-      "received": received_money.text ?? "",
-      "balance_due": balance_due.text,
-      "paymentType": selectedPaymentType,
-      "description": description_controller.text,
-      "Image": image ?? "Null",
-    };
-
-    // Store the main payment data under the transaction ID
-    await paymentInRef.child(transactionId).set(paymentData);
-
-    // Reference to store items within the same transaction
-    DatabaseReference itemsRef = paymentInRef.child(transactionId).child("items");
-
-    // Store each item inside the "items" node under the same transaction
-    for (var i = 0; i < addedItems.length; i++) {
-      String itemId = itemsRef.push().key!; // Generate unique item ID
-      await itemsRef.child(itemId).set({
-        "itemName": addedItems[i]["itemName"],
-        "quantity": addedItems[i]["quantity"],
-        "unit": addedItems[i]["unit"],
-        "rate": addedItems[i]["rate"],
-        "tax": addedItems[i]["tax"],
-        "discount": addedItems[i]["discount"],
-        "subtotal": addedItems[i]["subtotal"],
-      });
-    }
-
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Payment-In Data & Items Saved Successfully!')),
-    );
-  }
-
-
   List<Map<String, dynamic>> addedItems = [];
   void _navigateToAddItemScreen(BuildContext context) async {
     final result = await Navigator.push(
@@ -150,6 +119,137 @@ class AddNewSales extends State<Add_new_Sales> {
       balance_due.text = balanceDue.toStringAsFixed(2); // Format to 2 decimal places
     });
   }
+
+  Future<void> saveSaleData(String userId) async {
+    DatabaseReference paymentInRef = FirebaseDatabase.instance.ref("users/$userId/Transactions/");
+    DatabaseReference bankAccountRef;
+    DatabaseReference partiesRef = FirebaseDatabase.instance.ref("users/$userId/Parties");
+
+    // Generate a unique transaction ID
+    String transactionId = paymentInRef.push().key!;
+
+    if (selectedPaymentType == "Cash") {
+      bankAccountRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Cash/Cash_transaction");
+    } else {
+      bankAccountRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Bank/$selectedPaymentType/Bank_transaction");
+    }
+
+    if (invoice_no != null &&
+        customer_controller.text.isNotEmpty &&
+        phonenumber_controller.text.isNotEmpty &&
+        received_money.text.isNotEmpty &&
+        selectedPaymentType != null &&
+        description_controller.text.isNotEmpty) {
+
+      DatabaseReference totalBalanceRef;
+      if (selectedPaymentType == "Cash") {
+        totalBalanceRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Cash/total_balance");
+      } else {
+        totalBalanceRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Bank/$selectedPaymentType/total_balance");
+      }
+
+      DatabaseEvent event = await totalBalanceRef.once();
+      double totalBalance = 0;
+      if (event.snapshot.value != null) {
+        totalBalance = double.parse(event.snapshot.value.toString());
+      }
+
+      double totalAmount = double.tryParse(total_amount.text) ?? 0.0;
+      double receivedAmount = double.tryParse(received_money.text) ?? 0.0;
+      double balanceDue = double.tryParse(balance_due.text) ?? 0.0; // Negative in Parties
+      double newTotalBalance = totalBalance + receivedAmount;
+
+      int currentTime = DateTime.now().millisecondsSinceEpoch;
+
+      Map<String, dynamic> paymentData = {
+        "transactionId": transactionId,
+        "type": "sale",
+        "invoice_no": invoice_no,
+        "date": "${time.day}/${time.month}/${time.year}",
+        "customer": customer_controller.text,
+        "phone": phonenumber_controller.text,
+        "total_amount": totalAmount.toString(),
+        "received": receivedAmount.toString(),
+        "balance_due": balanceDue.toString(),
+        "paymentType": selectedPaymentType,
+        "description": description_controller.text,
+        "Image": image ?? null,
+        "current_time": currentTime,
+      };
+
+      await paymentInRef.child(transactionId).set(paymentData);
+
+      // ✅ Store each item inside the "items" node under the same transaction
+      DatabaseReference itemsRef = paymentInRef.child(transactionId).child("items");
+      for (var i = 0; i < addedItems.length; i++) {
+        // Generate the key in the format "item_0", "item_1", etc.
+        String itemKey = "item_$i";
+
+        // Save the item with the custom key
+        await itemsRef.child(itemKey).set({
+          "itemName": addedItems[i]["itemName"],
+          "quantity": addedItems[i]["quantity"],
+          "unit": addedItems[i]["unit"],
+          "rate": addedItems[i]["rate"],
+          "taxValue": addedItems[i]["taxValue"],
+          "discount": addedItems[i]["discount"],
+          "subtotal": addedItems[i]["subtotal"],
+        });
+      }
+
+      // ✅ Update Bank Transaction
+      Map<String, dynamic> bankTransactionData = {
+        "transactionId": transactionId,
+        "date": "${time.day}/${time.month}/${time.year}",
+        "amount": received_money.text,
+        "current_time": currentTime,
+        "transaction": paymentData,
+      };
+
+      await bankAccountRef.child(transactionId).set(bankTransactionData);
+      await totalBalanceRef.set(newTotalBalance);
+
+      // ✅ Update the 'Parties' node
+      String customerName = customer_controller.text;
+      String phoneNumber = phonenumber_controller.text;
+
+      DatabaseReference partyQuery = partiesRef.child(phoneNumber);
+      DatabaseEvent partyEvent = await partyQuery.once();
+
+      double totalPartyAmount = -balanceDue; // Deduct the due amount from total_amount
+
+      if (partyEvent.snapshot.value != null) {
+        Map<dynamic, dynamic> partyData = partyEvent.snapshot.value as Map<dynamic, dynamic>;
+        double existingAmount = double.parse(partyData["total_amount"].toString());
+        totalPartyAmount += existingAmount;
+      }
+
+      Map<String, dynamic> partyData = {
+        "name": customerName,
+        "phone": phoneNumber,
+        "total_amount": totalPartyAmount.toString(),
+      };
+
+      await partiesRef.child(phoneNumber).update(partyData); // ✅ Update without overwriting transactions
+
+      // ✅ Append transaction under Parties/{phone}/transactions
+      await partiesRef.child(phoneNumber).child("transactions").update({
+        transactionId: paymentData,
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sale Data, Items & Bank Updated Successfully!')),
+      );
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Please enter required details!")),
+      );
+    }
+  }
+
+
+
   @override
   void initState() {
     super.initState();
@@ -187,7 +287,7 @@ class AddNewSales extends State<Add_new_Sales> {
          onRightButtonPressed: ()async{
            User? user = FirebaseAuth.instance.currentUser;
            if (user != null) {
-             await savePaymentInData(user.uid);
+             await saveSaleData(user.uid);
            } else {
              ScaffoldMessenger.of(context).showSnackBar(
                SnackBar(content: Text('User not logged in!')),
@@ -383,191 +483,209 @@ class AddNewSales extends State<Add_new_Sales> {
             // Billed Items Section
             if (addedItems.isNotEmpty)
               Container(
-        color: Colors.white,
-        padding: EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Expand/Collapse Header
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  isExpanded = !isExpanded;
-                });
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.blue[300],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                padding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                color: Colors.white,
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      "Billed Items",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                    // Expand/Collapse Header
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          isExpanded = !isExpanded;
+                        });
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blue[300],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              "Billed Items",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Icon(
+                              isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                              color: Colors.white,
+                            )
+                          ],
+                        ),
                       ),
                     ),
-                    Icon(
-                      isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                      color: Colors.white,
-                    )
-                  ],
-                ),
-              ),
-            ),
 
-            // Items List (Expandable)
-            if (isExpanded)
-              Container(
-                margin: EdgeInsets.only(top: 5),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.2),
-                      blurRadius: 5,
-                      spreadRadius: 2,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Column(
-                    children: [
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: NeverScrollableScrollPhysics(),
-                        itemCount: addedItems.length,
-                        itemBuilder: (context, index) {
-                          // Convert values safely
-                          double rate = double.tryParse(addedItems[index]["rate"].toString()) ?? 0.0;
-                          double quantity = double.tryParse(addedItems[index]["quantity"].toString()) ?? 0.0;
-                          double subtotal = rate * quantity;
-                          double discount = double.tryParse(addedItems[index]["discount"].toString()) ?? 0.0;
-                          double tax = double.tryParse(addedItems[index]["tax"].toString()) ?? 0.0;
-
-                          double discountAmt = (subtotal * discount) / 100;
-                          double taxAmt = ((subtotal - discountAmt) * tax) / 100;
-                          double finalAmount = subtotal - discountAmt + taxAmt;
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                    // Items List (Expandable)
+                    if (isExpanded)
+                      Container(
+                        margin: EdgeInsets.only(top: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.2),
+                              blurRadius: 5,
+                              spreadRadius: 2,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Column(
                             children: [
-                              // Item Row with Delete Button
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text("#${index + 1}  ${addedItems[index]["itemName"]}",
-                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                  ),
-                                  Text("₹ ${finalAmount.toStringAsFixed(2)}",
-                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                  IconButton(
-                                    icon: Icon(Icons.delete, color: Colors.red),
-                                    onPressed: () {
-                                      setState(() {
-                                        addedItems.removeAt(index); // ✅ Remove item
-                                      });
-                                    },
-                                  ),
-                                ],
-                              ),
-                              SizedBox(height: 5),
+                              ListView.builder(
+                                shrinkWrap: true,
+                                physics: NeverScrollableScrollPhysics(),
+                                itemCount: addedItems.length,
+                                itemBuilder: (context, index) {
+                                  // Convert values safely
+                                  double rate = double.tryParse(addedItems[index]["rate"].toString()) ?? 0.0;
+                                  double quantity = double.tryParse(addedItems[index]["quantity"].toString()) ?? 0.0;
+                                  double subtotal = rate * quantity;
+                                  double discount = double.tryParse(addedItems[index]["discount"].toString()) ?? 0.0;
+                                  double tax = double.tryParse(addedItems[index]["taxValue"].toString()) ?? 0.0;
 
-                              // Item Subtotal
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text("Item Subtotal:", style: TextStyle(color: Colors.grey[600])),
-                                  Text(
-                                    "$rate ${addedItems[index]["unit"]} x $quantity = ₹ ${subtotal.toStringAsFixed(2)}",
-                                    style: TextStyle(color: Colors.grey[600]),
-                                  ),
-                                ],
-                              ),
+                                  double discountAmt = (subtotal * discount) / 100;
+                                  double taxAmt = ((subtotal - discountAmt) * tax) / 100;
+                                  double finalAmount = subtotal - discountAmt + taxAmt;
 
-                              SizedBox(height: 5),
-
-                              // Discount Row
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  RichText(
-                                    text: TextSpan(
-                                      text: "Discount (%): ",
-                                      style: TextStyle(color: Colors.orange[700], fontSize: 14),
-                                      children: [
-                                        TextSpan(
-                                          text: discount.toString(),
-                                          style: TextStyle(fontWeight: FontWeight.bold),
+                                  return GestureDetector(
+                                    onTap: () async {
+                                      final updatedItem = await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => Add_Items_to_Sale(
+                                            title: "Edit Item",
+                                            existingItem: addedItems[index], // Pass the item data
+                                          ),
                                         ),
+                                      );
+
+                                      // If the user saves the edited item, update the list
+                                      if (updatedItem != null) {
+                                        setState(() {
+                                          addedItems[index] = updatedItem; // Update the item in the list
+                                        });
+                                      }
+                                    },
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Item Row with Delete Button
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text("#${index + 1}  ${addedItems[index]["itemName"]}",
+                                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                            ),
+                                            Text("₹ ${finalAmount.toStringAsFixed(2)}",
+                                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                            IconButton(
+                                              icon: Icon(Icons.delete, color: Colors.red),
+                                              onPressed: () {
+                                                setState(() {
+                                                  addedItems.removeAt(index); // ✅ Remove item
+                                                });
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                        SizedBox(height: 5),
+
+                                        // Item Subtotal
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text("Item Subtotal:", style: TextStyle(color: Colors.grey[600])),
+                                            Text(
+                                              "$rate ${addedItems[index]["unit"]} x $quantity = ₹ ${subtotal.toStringAsFixed(2)}",
+                                              style: TextStyle(color: Colors.grey[600]),
+                                            ),
+                                          ],
+                                        ),
+
+                                        SizedBox(height: 5),
+
+                                        // Discount Row
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            RichText(
+                                              text: TextSpan(
+                                                text: "Discount (%): ",
+                                                style: TextStyle(color: Colors.orange[700], fontSize: 14),
+                                                children: [
+                                                  TextSpan(
+                                                    text: discount.toString(),
+                                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Text(
+                                              "₹ ${discountAmt.toStringAsFixed(2)}",
+                                              style: TextStyle(color: Colors.orange[700], fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
+
+                                        SizedBox(height: 5),
+
+                                        // Tax Row
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text("GST (${tax.toString()}%):", style: TextStyle(color: Colors.grey[600])),
+                                            Text(
+                                              "₹ ${taxAmt.toStringAsFixed(2)}",
+                                              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
+
+                                        SizedBox(height: 10),
                                       ],
                                     ),
-                                  ),
-                                  Text(
-                                    "₹ ${discountAmt.toStringAsFixed(2)}",
-                                    style: TextStyle(color: Colors.orange[700], fontWeight: FontWeight.bold),
-                                  ),
-                                ],
+                                  );
+                                },
                               ),
+                              Divider(color: Colors.grey[300]),
 
-                              SizedBox(height: 5),
-
-                              // Tax Row
+                              // ✅ Total Calculation Section
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text("GST (${tax.toString()}%):", style: TextStyle(color: Colors.grey[600])),
+                                  Text("Total Discount: ₹ ${calculateTotalDiscount().toStringAsFixed(2)}"),
+                                  Text("Total Tax: ₹ ${calculateTotalTax().toStringAsFixed(2)}"),
+                                ],
+                              ),
+                              SizedBox(height: 5),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text("Total Qty: ${calculateTotalQuantity()}"),
                                   Text(
-                                    "₹ ${taxAmt.toStringAsFixed(2)}",
-                                    style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                                    "Total Amount: ₹ ${calculateTotalFinalAmount().toStringAsFixed(2)}",
+                                    style: TextStyle(fontWeight: FontWeight.bold),
                                   ),
                                 ],
                               ),
-
-                              SizedBox(height: 10),
                             ],
-                          );
-                        },
-                      ),
-
-                      Divider(color: Colors.grey[300]),
-
-                      // ✅ Total Calculation Section
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Total Discount: ₹ ${calculateTotalDiscount().toStringAsFixed(2)}"),
-                          Text("Total Tax: ₹ ${calculateTotalTax().toStringAsFixed(2)}"),
-                        ],
-                      ),
-                      SizedBox(height: 5),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Total Qty: ${calculateTotalQuantity()}"),
-                          Text(
-                            "Total Amount: ₹ ${calculateTotalFinalAmount().toStringAsFixed(2)}",
-                            style: TextStyle(fontWeight: FontWeight.bold),
                           ),
-                        ],
+                        ),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
-          ],
-        ),
-      ),
-
 
 
 
@@ -747,64 +865,8 @@ class AddNewSales extends State<Add_new_Sales> {
                                 child: Align(
                                   alignment: Alignment.topRight,
                                   child: GestureDetector(
-                                    onTap: () {
-                                      showModalBottomSheet(
-                                        backgroundColor: Colors.white,
-                                        context: context,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                                        ),
-                                        builder: (context) {
-                                          return StatefulBuilder(
-                                            builder: (context, setStateModal) { // Use setStateModal for local state changes
-                                              return Padding(
-                                                padding: const EdgeInsets.all(16.0),
-                                                child: Column(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Text("Payment Type",style: TextStyle(fontSize: 22),),
-                                                    ListTile(
-                                                      leading: Icon(Icons.money, color: Colors.green),
-                                                      title: Text("Cash"),
-                                                      onTap: () {
-                                                        setState(() {
-                                                          selectedPaymentType = "Cash";
-                                                        });
-                                                        Navigator.pop(context);
-                                                      },
-                                                      tileColor: selectedPaymentType == "Cash"
-                                                          ? Colors.grey[200]
-                                                          : null,
-                                                    ),
-                                                    ListTile(
-                                                      leading: Icon(Icons.receipt_long, color: Colors.yellow),
-                                                      title: Text("Cheque"),
-                                                      onTap: () {
-                                                        setState(() {
-                                                          selectedPaymentType = "Cheque";
-                                                        });
-                                                        Navigator.pop(context);
-                                                      },
-                                                      tileColor: selectedPaymentType == "Cheque"
-                                                          ? Colors.grey[200]
-                                                          : null,
-                                                    ),
-                                                    Divider(),
-                                                    ListTile(
-                                                      leading: Icon(Icons.add, color: Colors.blue),
-                                                      title: Text("Add Bank A/c"),
-                                                      onTap: () {
-                                                        // Handle "Add Bank A/c" logic
-                                                        Navigator.pop(context);
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-                                            },
-                                          );
-                                        },
-                                      );
+                                    onTap: (){
+                                      select_payment_method(context);
                                     },
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -978,6 +1040,7 @@ class AddNewSales extends State<Add_new_Sales> {
                             children: [
                               Expanded(
                                 child: TextField(
+                                  controller: description_controller,
                                   decoration: InputDecoration(
                                     labelText: "Description",
                                     hintText: 'Add Note',
@@ -1000,35 +1063,7 @@ class AddNewSales extends State<Add_new_Sales> {
                               SizedBox(width: 10.0),
                               GestureDetector(
                                 onTap:(){
-                                  showDialog(
-                                    context: context,
-                                    builder: (BuildContext context) {
-                                      return AlertDialog(
-                                        backgroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.zero,
-                                        ),
-                                        content: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            ListTile(
-                                              title: Text("Camera"),
-                                              onTap: () {
-                                                Navigator.pop(context); // Close the dialog
-                                              },
-                                            ),
-                                            Divider(),
-                                            ListTile(
-                                              title: Text("Gallery"),
-                                              onTap: () {
-                                                Navigator.pop(context); // Close the dialog
-                                              },
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                                  );
+                                  uploadImage();
                                 }, // Show the dialog on tap
                                 child: Container(
                                   width: 75,
@@ -1038,25 +1073,12 @@ class AddNewSales extends State<Add_new_Sales> {
                                     borderRadius: BorderRadius.circular(8.0),
                                     color: Colors.grey[100],
                                   ),
-                                  child: Icon(FlutterRemix.camera_line),
+                                  child: image!=null?Image.memory(base64Decode(image!)):Icon(Remix.folder_image_line),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                      Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Container(
-                            height: 70,
-                            decoration: BoxDecoration(
-                              border: Border.all(width: 1,color: Colors.grey),
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                            child: Center(
-                              child: Text("Attach document",style: TextStyle(fontSize: 11),),
-                            ),
-                          )
                       ),
                     ],
                   ),
@@ -1067,6 +1089,114 @@ class AddNewSales extends State<Add_new_Sales> {
             ),
           ),
         ),
+    );
+  }
+  void select_payment_method(BuildContext context) {
+    // Fetch bank accounts from Firebase
+    User? user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      print("No user logged in");
+      return;
+    }
+    String userId = user.uid;
+
+    DatabaseReference ref = FirebaseDatabase.instance
+        .ref()
+        .child('users')
+        .child('$userId')
+        .child('Bank_accounts')
+        .child('Bank');
+
+    showModalBottomSheet(
+      backgroundColor: Colors.white,
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Payment Type", style: TextStyle(fontSize: 22)),
+                      IconButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
+                        icon: Icon(Remix.close_line),
+                      ),
+                    ],
+                  ),
+                  Divider(color: Colors.grey.shade200, thickness: 1),
+                  ListTile(
+                    leading: Icon(Icons.money, color: Colors.green),
+                    title: Text("Cash"),
+                    onTap: () {
+                      setState(() {
+                        selectedPaymentType = "Cash";
+                      });
+                      Navigator.pop(context);
+                    },
+                    tileColor: selectedPaymentType == "Cash"
+                        ? Colors.grey[200]
+                        : null,
+                  ),
+                  // Fetch and display bank accounts
+                  FutureBuilder(
+                    future: ref.once(),
+                    builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return CircularProgressIndicator();
+                      } else if (snapshot.hasError) {
+                        return Text('Error: ${snapshot.error}');
+                      } else if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+                        return Text('No bank accounts found');
+                      } else {
+                        // Parse the bank accounts data
+                        Map<dynamic, dynamic> banks = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+                        return Column(
+                          children: banks.entries.map((entry) {
+                            var bank = entry.value;
+                            return ListTile(
+                              leading: Icon(Icons.account_balance, color: Colors.blue),
+                              title: Text(bank['bank_name']),
+                              subtitle: Text("Account Holder: ${bank['holder_name']}"),
+                              onTap: () {
+                                setState(() {
+                                  selectedPaymentType = bank['bank_name'];
+                                });
+                                Navigator.pop(context);
+                              },
+                              tileColor: selectedPaymentType == bank['bank_name']
+                                  ? Colors.grey[200]
+                                  : null,
+                            );
+                          }).toList(),
+                        );
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.add, color: Colors.blue),
+                    title: Text("Add Bank A/c"),
+                    onTap: () {
+                      // Handle "Add Bank A/c" logic
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
   void showInvoiceSheet(BuildContext context, Function(int) updateInvoice) {

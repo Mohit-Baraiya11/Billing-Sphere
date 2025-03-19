@@ -237,7 +237,7 @@ class PurchaseReturn extends State<Purchase_Return> {
                             SizedBox(height: 24),
                             OutlinedButton(
                               onPressed: () {
-                                Navigator.push(context, MaterialPageRoute(builder: (builder)=>Add_Items_to_Sale(title: "Add Items to purchase Return")));
+                                Navigator.push(context, MaterialPageRoute(builder: (builder)=>Add_Items_to_Sale(title: "Add Items to purchase Return",)));
                               },
                               style: OutlinedButton.styleFrom(
                                 side: BorderSide(color: Colors.blueAccent),

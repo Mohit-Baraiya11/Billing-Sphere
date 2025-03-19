@@ -122,19 +122,19 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
 
       // 🟢 Get old transaction details
       double oldAmount = double.tryParse(oldTransaction["total_amount"].toString()) ?? 0.0;
-      String oldBankName = oldTransaction["paymentType"] ?? "";
+      String oldPaymentType = oldTransaction["paymentType"] ?? "";
       String transactionId = widget.transactionId;
       String oldPhoneNumber = oldTransaction["phone"] ?? "";
 
-      // 🟢 Get the new transaction details
+      // 🟢 Get new transaction details
       double newAmount = double.tryParse(received_money.text) ?? 0.0;
-      String newBankName = selectedPaymentType ?? oldBankName;
-      String newPhoneNumber = phonenumber_controller.text;
-      String newCustomerName = customer_controller.text;
+      String? newPaymentType = selectedPaymentType!.isNotEmpty ? selectedPaymentType : oldPaymentType;
+      String newPhoneNumber = phonenumber_controller.text.trim();
+      String newCustomerName = customer_controller.text.trim();
 
       // 🟢 Check for changes
       bool amountChanged = oldAmount != newAmount;
-      bool paymentTypeChanged = oldBankName != newBankName;
+      bool paymentTypeChanged = oldPaymentType != newPaymentType;
       bool phoneChanged = oldPhoneNumber != newPhoneNumber;
 
       // 🟢 Update Transaction Data
@@ -145,9 +145,9 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
         "date": "${time.day}/${time.month}/${time.year}",
         "customer": newCustomerName,
         "phone": newPhoneNumber,
-        "total_amount": received_money.text,
+        "total_amount": newAmount.toString(),
         "received": received_money.text,
-        "paymentType": newBankName,
+        "paymentType": newPaymentType,
         "description": description_controller.text,
         "Image": image ?? "Null",
       };
@@ -155,14 +155,24 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
       await transactionRef.update(updatedData);
       print("✅ Transaction updated successfully!");
 
-      // 🟢 Update Party Details
-      if (amountChanged || phoneChanged) {
-        await updatePartyTransaction(userId, transactionId, oldPhoneNumber, oldAmount, newPhoneNumber, newCustomerName, newAmount);
+      // 🟢 Update Party Transaction (if amount or phone changed)
+      if (amountChanged || phoneChanged || paymentTypeChanged) {
+        await updatePartyTransaction(
+          userId,
+          transactionId,
+          oldPhoneNumber,
+          oldAmount,
+          newPhoneNumber,
+          newCustomerName,
+          newAmount,
+          oldPaymentType,
+          newPaymentType!,
+        );
       }
 
-      // 🟢 Update Bank Transaction if needed
+      // 🟢 Update Bank Transaction (if amount or payment type changed)
       if (amountChanged || paymentTypeChanged) {
-        await updateBankTransaction(userId, transactionId, oldBankName, oldAmount, newBankName);
+        await updateBankTransaction(userId, transactionId, oldPaymentType, oldAmount, newPaymentType!);
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -325,11 +335,14 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
       double oldAmount,
       String newPhoneNumber,
       String newCustomerName,
-      double newAmount
-      ) async {
+      double newAmount,
+      String oldPaymentType,
+      String newPaymentType) async
+  {
+
     DatabaseReference partiesRef = FirebaseDatabase.instance.ref("users/$userId/Parties");
 
-    // 🟢 Adjust old party's total_amount
+    // 🔹 Adjust old party's total_amount
     if (oldPhoneNumber.isNotEmpty) {
       DatabaseReference oldPartyRef = partiesRef.child(oldPhoneNumber);
       DatabaseEvent oldPartyEvent = await oldPartyRef.once();
@@ -337,52 +350,68 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
       if (oldPartyEvent.snapshot.value != null) {
         Map<dynamic, dynamic> oldPartyData = oldPartyEvent.snapshot.value as Map<dynamic, dynamic>;
         double existingAmount = double.tryParse(oldPartyData["total_amount"].toString()) ?? 0.0;
-        double newTotal = existingAmount - oldAmount;
+        double newTotal = existingAmount - oldAmount + newAmount;
+
         await oldPartyRef.update({"total_amount": newTotal.toString()});
+
+        // ✅ Ensure paymentType is updated inside the transaction
+        await oldPartyRef.child("transactions").child(transactionId).update({
+          "transactionId": transactionId,
+          "date": DateFormat('dd/MM/yyyy').format(DateTime.now()),
+          "amount": newAmount.toString(),
+          "customer": newCustomerName,
+          "phone": newPhoneNumber,
+          "description": description_controller.text,
+          "invoice_no": invoice_no ?? "0",
+          "paymentType": newPaymentType,  // ✅ Update payment type here
+          "received": received_money.text,
+          "total_amount": received_money.text,
+          "type": "payment-in",
+        });
+
+        print("✅ Updated old party transaction successfully!");
+      }
+    }
+
+    // 🔹 If phone number changed, move transaction to the new party
+    if (oldPhoneNumber != newPhoneNumber) {
+      DatabaseReference newPartyRef = partiesRef.child(newPhoneNumber);
+      DatabaseEvent newPartyEvent = await newPartyRef.once();
+
+      double newTotalAmount = newAmount;
+      if (newPartyEvent.snapshot.value != null) {
+        Map<dynamic, dynamic> newPartyData = newPartyEvent.snapshot.value as Map<dynamic, dynamic>;
+        double existingAmount = double.tryParse(newPartyData["total_amount"].toString()) ?? 0.0;
+        newTotalAmount += existingAmount;
       }
 
-      // 🔴 Remove the transaction from the old party
-      await oldPartyRef.child("transactions").child(transactionId).remove();
+      // 🔹 Update or create new party
+      await newPartyRef.update({
+        "name": newCustomerName,
+        "phone": newPhoneNumber,
+        "total_amount": newTotalAmount.toString(),
+      });
+
+      // ✅ Ensure paymentType is updated properly in new party's transaction
+      await newPartyRef.child("transactions").child(transactionId).set({
+        "transactionId": transactionId,
+        "date": DateFormat('dd/MM/yyyy').format(DateTime.now()),
+        "amount": newAmount.toString(),
+        "customer": newCustomerName,
+        "phone": newPhoneNumber,
+        "description": description_controller.text,
+        "invoice_no": invoice_no ?? "0",
+        "paymentType": newPaymentType,  // ✅ Update payment type here
+        "received": received_money.text,
+        "total_amount": received_money.text,
+        "type": "payment-in",
+      });
+
+      print("✅ Moved transaction to new party successfully with updated paymentType!");
     }
-
-    // 🟢 Update new party's total_amount
-    DatabaseReference newPartyRef = partiesRef.child(newPhoneNumber);
-    DatabaseEvent newPartyEvent = await newPartyRef.once();
-
-    double newTotalAmount = newAmount;
-    if (newPartyEvent.snapshot.value != null) {
-      Map<dynamic, dynamic> newPartyData = newPartyEvent.snapshot.value as Map<dynamic, dynamic>;
-      double existingAmount = double.tryParse(newPartyData["total_amount"].toString()) ?? 0.0;
-      newTotalAmount += existingAmount;
-    }
-
-    // 🟢 Save the new party details
-    Map<String, dynamic> partyData = {
-      "name": newCustomerName,
-      "phone": newPhoneNumber,
-      "total_amount": newTotalAmount.toString(),
-    };
-
-    await newPartyRef.set(partyData);
-
-    // 🟢 Add updated transaction inside `Parties/transactions`
-    Map<String, dynamic> transactionData = {
-      "transactionId": transactionId,
-      "date": DateFormat('dd/MM/yyyy').format(DateTime.now()),
-      "amount": newAmount.toString(),
-      "customer": newCustomerName,
-      "phone": newPhoneNumber,
-      "description": description_controller.text,
-      "invoice_no": invoice_no ?? "0",
-      "paymentType": selectedPaymentType,
-      "received": received_money.text,
-      "total_amount": received_money.text,
-      "type": "payment-in",
-    };
-
-    await newPartyRef.child("transactions").child(transactionId).set(transactionData);
-    print("✅ Party transaction updated successfully!");
   }
+
+
 
 
 
