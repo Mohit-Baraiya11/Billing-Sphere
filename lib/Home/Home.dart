@@ -3,20 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_remix/flutter_remix.dart';
 import 'package:google_signup/Home/Party%20Details/all_parties_report.dart';
 import 'package:google_signup/Home/Transaction%20Details/TransactionDetailsTab.dart';
-import 'package:remixicon/remixicon.dart';
 import 'Party Details/Add_new_party.dart';
 import 'Party Details/Import_Party.dart';
 import 'Party Details/Party_Statement.dart';
-import 'Sale_Report.dart';
-import 'Transaction Details/Add Txn/Expense/Expenses.dart';
-import 'Transaction Details/Add Txn/Other Transaction/p2p_transfer.dart';
-import 'Transaction Details/Add Txn/Payment-Out/Payment_Out.dart';
-import 'Transaction Details/Add Txn/Purchase/purchase.dart';
-import 'Transaction Details/Add Txn/Payment-in/payment-in.dart';
-import 'Transaction Details/Show All/all_transaction.dart';
-import 'Transaction Details/Show All/day_book.dart';
-import 'Transaction Details/Show All/profit&loss.dart';
-import 'Transaction Details/Add Txn/Sale Invoice/add_new_sales.dart';
 
 
 
@@ -35,31 +24,37 @@ class HomePage extends StatelessWidget {
               labelColor: Color(0xFFC41E3A),
               unselectedLabelColor: Colors.black,
               indicator: BoxDecoration(
-                color: Color(0xFFFADBD8),
+                color: Colors.red.shade50,
                 borderRadius: BorderRadius.circular(30),
                 border: Border.all(color: Color(0xFFC41E3A)), // Red border
               ),
-              indicatorPadding: EdgeInsets.symmetric(vertical: 8.0), // Align the indicator vertically
+              indicatorPadding: EdgeInsets.symmetric(vertical: 8.0,), // Align the indicator vertically
               overlayColor: MaterialStateProperty.all(Colors.transparent), // Remove ripple effect
               tabs: [
                 Tab(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18.0),
-                    child: Text(
-                      "Transaction Details",
-                      style: TextStyle(fontSize: 14),
+                  child: Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      child:Text(
+                          "Transaction Details",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ),
                     ),
-                  ),
                 ),
                 Tab(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18.0),
-                    child: Text(
-                      "Party Details",
-                      style: TextStyle(fontSize: 14),
+                  child: Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      child: Text(
+                          "Party Details",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 14,),
+                        ),
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),

@@ -167,19 +167,19 @@ class _AddItemsToSaleState extends State<Add_Items_to_Sale> {
   void _calculateTotalAmount() {
     double quantity = double.tryParse(quantityController.text) ?? 0.0;
     double rate = double.tryParse(rateController.text) ?? 0.0;
-    double subtotal = quantity * rate; // Calculate subtotal
-    double discountPercentage = double.tryParse(discountController.text) ?? 0.0;
-    double discountAmount = (subtotal * discountPercentage) / 100;
-    double gstAmount = (subtotal - discountAmount) * (selectedGstValue / 100);
-    double totalAmount = subtotal - discountAmount + gstAmount;
+    double discount = double.tryParse(discountController.text) ?? 0.0;
 
-    setState(() {
-      discountAmountController.text = discountAmount.toStringAsFixed(2);
-      gstAmountController.text = gstAmount.toStringAsFixed(2);
-      totalAmountController.text = totalAmount.toStringAsFixed(2);
-    });
+    double subtotal = quantity * rate;
+    double discountAmount = (subtotal * discount) / 100;
+    double taxableAmount = subtotal - discountAmount;
+    double gstAmount = (taxableAmount * selectedGstValue) / 100;
+    double totalAmount = taxableAmount + gstAmount;
+
+    // Update the controllers with calculated values
+    discountAmountController.text = discountAmount.toStringAsFixed(2);
+    gstAmountController.text = gstAmount.toStringAsFixed(2);
+    totalAmountController.text = totalAmount.toStringAsFixed(2);
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(

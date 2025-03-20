@@ -1,9 +1,14 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:dotted_border/dotted_border.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_remix/flutter_remix.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:remixicon/remixicon.dart';
 
 import '../../../BottomNavbar_save_buttons.dart';
@@ -42,9 +47,25 @@ class _Purchase_Details extends State<Purchase_Details> {
   String? selectedState;
 
   String? image;
+  Future<void> uploadImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      File imageFile = File(pickedFile.path);
+      List<int> imageBytes = await imageFile.readAsBytes();
+      String base64Image = base64Encode(imageBytes);
+      if(base64Image!=null){
+        setState(() {
+          image = base64Image;
+        });
+      }
+    }
+  }
 
   bool isExpanded = false;
   bool is_readyonly = true;
+
 
   void _navigateToAddItemScreen(BuildContext context) async {
     final result = await Navigator.push(
@@ -55,16 +76,48 @@ class _Purchase_Details extends State<Purchase_Details> {
     if (result != null) {
       setState(() {
         print(result);
-        existingPurchaseItems.add(result); // Add new item to the list
+        existingItems.add(result); // Add new item to the list
       });
     }
   }
 
-  List<Map<String, dynamic>> existingPurchaseItems = [];
+  double calculateTotalQuantity(List<Map<String, dynamic>> existingItems) {
+    return existingItems.fold(0.0, (sum, item) => sum + (double.tryParse(item["quantity"].toString()) ?? 0.0));
+  }
+  double calculateTotalDiscount(List<Map<String, dynamic>> existingItems) {
+    return existingItems.fold(0.0, (sum, item) {
+      double subtotal = (double.tryParse(item["rate"].toString()) ?? 0.0) * (double.tryParse(item["quantity"].toString()) ?? 0.0);
+      double discount = double.tryParse(item["discount"].toString()) ?? 0.0;
+      return sum + (subtotal * discount / 100);
+    });
+  }
+  double calculateTotalTax(List<Map<String, dynamic>> existingItems) {
+    return existingItems.fold(0.0, (sum, item) {
+      double subtotal = (double.tryParse(item["rate"].toString()) ?? 0.0) * (double.tryParse(item["quantity"].toString()) ?? 0.0);
+      double discount = double.tryParse(item["discount"].toString()) ?? 0.0;
+      double discountedSubtotal = subtotal - (subtotal * discount / 100);
+      double tax = double.tryParse(item["tax"].toString()) ?? 0.0;
+      return sum + (discountedSubtotal * tax / 100);
+    });
+  }
+  double calculateTotalFinalAmount(List<Map<String, dynamic>> existingItems) {
+    return existingItems.fold(0.0, (sum, item) {
+      double rate = double.tryParse(item["rate"].toString()) ?? 0.0;
+      double quantity = double.tryParse(item["quantity"].toString()) ?? 0.0;
+      double subtotal = rate * quantity;
+      double discount = double.tryParse(item["discount"].toString()) ?? 0.0;
+      double discountAmt = (subtotal * discount) / 100;
+      double tax = double.tryParse(item["taxValue"].toString()) ?? 0.0;
+      double taxAmt = ((subtotal - discountAmt) * tax) / 100;
+      total_amount.text = (sum + (subtotal - discountAmt + taxAmt)).toString();
+      return sum + (subtotal - discountAmt + taxAmt);
+    });
+  }
 
+
+  List<Map<String, dynamic>> existingItems = []; // Store fetched items separately
   void fetchPurchaseData() async {
     User? user = FirebaseAuth.instance.currentUser;
-
     if (user == null) {
       print("No user logged in");
       return;
@@ -83,7 +136,7 @@ class _Purchase_Details extends State<Purchase_Details> {
         setState(() {
           customer_controller.text = data['party_name'] ?? "";
           phonenumber_controller.text = data['phone'] ?? "";
-          total_amount.text = data["total_amount"]??"";
+          total_amount.text = data["total_amount"] ?? "";
           paid_money.text = data['paid_amount'] ?? "";
           balance_due.text = data['balance_due'] ?? "";
           description_controller.text = data['description'] ?? "";
@@ -92,8 +145,7 @@ class _Purchase_Details extends State<Purchase_Details> {
           image = data['Image'];
           Country = "Gujrat";
 
-          // Store fetched purchase items separately
-          existingPurchaseItems = (data['items'] as Map).entries.map((e) {
+          existingItems = (data['items'] as Map).entries.map((e) {
             return {
               'discount': e.value['discount'],
               'itemName': e.value['itemName'],
@@ -116,7 +168,166 @@ class _Purchase_Details extends State<Purchase_Details> {
   }
   void updatePurchaseData() async {
     User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print("No user logged in");
+      return;
+    }
 
+    String userId = user.uid;
+    DatabaseReference transactionRef = FirebaseDatabase.instance.ref("users/$userId/Transactions/${widget.transactionId}");
+    DatabaseReference bankRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts");
+    DatabaseReference partiesRef = FirebaseDatabase.instance.ref("users/$userId/Parties");
+
+    try {
+      // Fetch old transaction data
+      DatabaseEvent event = await transactionRef.once();
+      DataSnapshot snapshot = event.snapshot;
+      if (!snapshot.exists) {
+        print("Transaction not found");
+        return;
+      }
+
+      Map<String, dynamic> oldData = Map<String, dynamic>.from(snapshot.value as Map);
+      String oldPaymentType = oldData['paymentType'] ?? "Cash";
+      double oldPaidAmount = double.tryParse(oldData['paid_amount']?.toString() ?? "0.0") ?? 0.0;
+      double oldBalanceDue = double.tryParse(oldData['balance_due']?.toString() ?? "0.0") ?? 0.0;
+
+      // Fetch new transaction values
+      double newPaidAmount = double.tryParse(paid_money.text) ?? 0.0;
+      double newBalanceDue = double.tryParse(balance_due.text) ?? 0.0;
+      String? newPaymentType = selectedPaymentType;
+      String phoneNumber = phonenumber_controller.text;
+
+      // Fetch bank balances
+      double cashBalance = 0.0, bankBalance = 0.0;
+
+      DatabaseEvent bankEvent = await bankRef.once();
+      if (bankEvent.snapshot.exists) {
+        Map<String, dynamic> bankData = Map<String, dynamic>.from(bankEvent.snapshot.value as Map);
+        cashBalance = double.tryParse(bankData['Cash']?['total_balance']?.toString() ?? "0.0") ?? 0.0;
+
+        if (newPaymentType != "Cash") {
+          bankBalance = double.tryParse(bankData['Bank']?[newPaymentType]?['total_balance']?.toString() ?? "0.0") ?? 0.0;
+        }
+      }
+
+      // ✅ **Reverse Old Payment Effect**
+      if (oldPaymentType == "Cash") {
+        cashBalance += oldPaidAmount;
+        await bankRef.child("Cash/Cash_transaction/${widget.transactionId}").remove();
+      } else {
+        await bankRef.child("Bank/$oldPaymentType/bank_transaction/${widget.transactionId}").remove();
+        bankBalance += oldPaidAmount;
+      }
+
+      // ✅ **Add New Payment Effect**
+      if (newPaymentType == "Cash") {
+        cashBalance -= newPaidAmount;
+        await bankRef.child("Cash/Cash_transaction/${widget.transactionId}").set({
+          "amount": newPaidAmount,
+          "type": "Purchase",
+          "date": DateTime.now().toIso8601String()
+        });
+      } else {
+        // ✅ Deduct from the new bank account balance
+        bankBalance -= newPaidAmount;
+        await bankRef.child("Bank/$newPaymentType/bank_transaction/${widget.transactionId}").set({
+          "amount": newPaidAmount,
+          "type": "Purchase",
+          "date": DateTime.now().toIso8601String()
+        });
+      }
+
+      // ✅ **Update Bank Balances**
+      await bankRef.child("Cash").update({"total_balance": cashBalance});
+      if (newPaymentType != "Cash") {
+        await bankRef.child("Bank/$newPaymentType").update({"total_balance": bankBalance});
+      }
+
+      // ✅ **Update Party Transaction**
+      await updatePartyTransaction(userId, phoneNumber, oldBalanceDue, newBalanceDue, newPaidAmount);
+
+      // ✅ **Update Purchase Transaction**
+      await transactionRef.update({
+        "party_name": customer_controller.text,
+        "phone": phoneNumber,
+        "total_amount": total_amount.text,
+        "paid_amount": newPaidAmount.toString(),
+        "balance_due": newBalanceDue.toString(),
+        "description": description_controller.text,
+        "invoice_no": invoice_no,
+        "paymentType": newPaymentType,
+        "Image": image ?? "Null",
+        "items": existingItems
+      });
+
+      print("Purchase transaction updated successfully");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Transaction updated successfully!")));
+      Navigator.pop(context);
+    } catch (error) {
+      print("Error updating transaction: $error");
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to update transaction!")));
+    }
+  }
+
+  Future<void> updatePartyTransaction(String userId, String partyId, double oldBalanceDue, double newBalanceDue, double newPaidAmount) async {
+    DatabaseReference partyRef = FirebaseDatabase.instance.ref("users/$userId/Parties/$partyId");
+    DatabaseEvent partyEvent = await partyRef.once();
+
+    if (partyEvent.snapshot.exists) {
+      Map<dynamic, dynamic> partyData = partyEvent.snapshot.value as Map<dynamic, dynamic>;
+      double existingPartyAmount = double.tryParse(partyData["total_amount"].toString()) ?? 0.0;
+
+      // ✅ Reverse the effect of the previous transaction
+      double totalPartyAmount = existingPartyAmount + oldBalanceDue;
+
+      // ✅ Apply the new balance_due
+      totalPartyAmount -= newBalanceDue;
+
+      // ✅ Update Party Details
+      await partyRef.update({
+        "total_amount": totalPartyAmount.toString(),
+      });
+
+      // ✅ Ensure transaction exists before updating
+      DatabaseReference transactionRef = partyRef.child("transactions/${widget.transactionId}");
+      DatabaseEvent transactionEvent = await transactionRef.once();
+
+      if (transactionEvent.snapshot.exists) {
+        // ✅ Update existing transaction under Parties/{phone}/transactions
+        await transactionRef.update({
+          "party_name": customer_controller.text,
+          "phone": partyId,
+          "total_amount": total_amount.text,
+          "paid_amount": newPaidAmount.toString(),
+          "balance_due": newBalanceDue.toString(),
+          "description": description_controller.text,
+          "invoice_no": invoice_no,
+          "paymentType": selectedPaymentType,
+          "Image": image ?? "Null",
+          "items": existingItems
+        });
+      } else {
+        // ✅ If transaction doesn't exist, create it
+        await transactionRef.set({
+          "party_name": customer_controller.text,
+          "phone": partyId,
+          "total_amount": total_amount.text,
+          "paid_amount": newPaidAmount.toString(),
+          "balance_due": newBalanceDue.toString(),
+          "description": description_controller.text,
+          "invoice_no": invoice_no,
+          "paymentType": selectedPaymentType,
+          "Image": image ?? "Null",
+          "items": existingItems
+        });
+      }
+    }
+  }
+
+
+  void deleteTransaction() async {
+    User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       print("No user logged in");
       return;
@@ -126,100 +337,33 @@ class _Purchase_Details extends State<Purchase_Details> {
     DatabaseReference ref = FirebaseDatabase.instance.ref("users/$userId/Transactions/${widget.transactionId}");
 
     try {
-      // Create updated data map
-      Map<String, dynamic> updatedData = {
-        "party_name": customer_controller.text,
-        "phone": phonenumber_controller.text,
-        "total_amount":total_amount.text,
-        "paid_amount": paid_money.text,
-        "balance_due": balance_due.text,
-        "description": description_controller.text,
-        "invoice_no": invoice_no,
-        "paymentType": selectedPaymentType,
-        "Image": image ?? "Null",
-        "items": { // Convert item list back to Firebase format
-          for (int i = 0; i < existingPurchaseItems.length; i++)
-            "item_$i": {
-              "discount": existingPurchaseItems[i]['discount'],
-              "itemName": existingPurchaseItems[i]['itemName'],
-              "quantity": existingPurchaseItems[i]['quantity'],
-              "rate": existingPurchaseItems[i]['rate'],
-              "subtotal": existingPurchaseItems[i]['subtotal'],
-              "tax": existingPurchaseItems[i]['tax'],
-              "unit": existingPurchaseItems[i]['unit'],
-            }
-        }
-      };
-
-      await ref.update(updatedData);
-      print("Purchase transaction updated successfully");
-
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Purchase transaction updated successfully!")),
-      );
-
-      // Navigate back
-      Navigator.pop(context);
-    } catch (error) {
-      print("Error updating purchase transaction: $error");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to update purchase transaction!")),
-      );
-    }
-  }
-
-  void deleteTransaction() async {
-    User? user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      print("No user logged in");
-      return;
-    }
-
-    String userId = user.uid;
-    DatabaseReference ref = FirebaseDatabase.instance
-        .ref("users/$userId/Transactions/${widget.transactionId}");
-
-    try {
-      await ref.remove(); // Delete the transaction from Firebase
+      await ref.remove();
       print("Transaction deleted successfully");
 
-      // Show confirmation message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Transaction deleted successfully!")),
-      );
-
-      // Navigate back to the previous screen
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Transaction deleted successfully!")));
       Navigator.pop(context);
     } catch (error) {
       print("Error deleting transaction: $error");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to delete transaction!")),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to delete transaction!")));
     }
   }
   void showDeleteConfirmationDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         backgroundColor: Colors.white,
         title: Text("Delete Transaction"),
         content: Text("Are you sure you want to delete this transaction? This action cannot be undone."),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close the dialog
-            },
-            child: Text("Cancel",style: TextStyle(color: Colors.black),),
+            onPressed: () => Navigator.pop(context),
+            child: Text("Cancel", style: TextStyle(color: Colors.black)),
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context); // Close the dialog
-              deleteTransaction(); // Call delete function
+              Navigator.pop(context);
+              deleteTransaction();
             },
             child: Text("Delete", style: TextStyle(color: Colors.red)),
           ),
@@ -228,15 +372,42 @@ class _Purchase_Details extends State<Purchase_Details> {
     );
   }
 
+
   @override
   void initState() {
     super.initState();
     fetchPurchaseData();
+    total_amount.addListener(calculateBalanceDue);
+    paid_money.addListener(calculateBalanceDue);
   }
+  void calculateBalanceDue() {
+    double totalAmount = total_amount.text.isNotEmpty ? double.tryParse(total_amount.text) ?? 0.0 : 0.0;
+    double receivedMoney = paid_money.text.isNotEmpty ? double.tryParse(paid_money.text) ?? 0.0 : 0.0;
+
+    double balanceDue = totalAmount - receivedMoney;
+    setState(() {
+      balance_due.text = balanceDue.toStringAsFixed(2); // Format to 2 decimal places
+    });
+  }
+  @override
+  void dispose() {
+    // Clean up controllers to avoid memory leaks
+    total_amount.dispose();
+    paid_money.dispose();
+    balance_due.dispose();
+    super.dispose();
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.grey.shade400,
+          statusBarIconBrightness: Brightness.light, // Light icons (for dark backgrounds)
+        ),
+        surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
         title: Text('Purchase'),
         bottom: Prefered_underline_appbar(),
@@ -300,7 +471,11 @@ class _Purchase_Details extends State<Purchase_Details> {
                           Expanded(
                             child: InkWell(
                               onTap: () {
-                                showInvoiceSheet(context);
+                                showInvoiceSheet(context, (newInvoice) {
+                                  setState(() {
+                                    invoice_no = newInvoice;
+                                  });
+                                });
                               },
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -332,8 +507,11 @@ class _Purchase_Details extends State<Purchase_Details> {
                           Expanded(
                             child: InkWell(
                               onTap: () {
-                                showInvoiceSheet(context);
-                              },
+                                showInvoiceSheet(context, (newInvoice) {
+                                  setState(() {
+                                    invoice_no = newInvoice;
+                                  });
+                                });                          },
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -381,6 +559,7 @@ class _Purchase_Details extends State<Purchase_Details> {
                   ),
                   SizedBox(height: 15,),
 
+                  ///Textfields
                   Container(
                     color: Colors.white,
                     padding: EdgeInsets.all(16),
@@ -466,7 +645,8 @@ class _Purchase_Details extends State<Purchase_Details> {
                     ),
                   ),
 
-                  if(!existingPurchaseItems.isEmpty)
+                  ///Billed Items
+                  if (existingItems.isNotEmpty)
                     Container(
                       color: Colors.white,
                       padding: EdgeInsets.all(16),
@@ -527,98 +707,166 @@ class _Purchase_Details extends State<Purchase_Details> {
                                 child: Column(
                                   children: [
                                     ListView.builder(
-                                      shrinkWrap: true, // Allows ListView to take only required height
-                                      physics: NeverScrollableScrollPhysics(), // Prevents nested scrolling issues
-                                      itemCount: existingPurchaseItems.length,
+                                      shrinkWrap: true,
+                                      physics: NeverScrollableScrollPhysics(),
+                                      itemCount: existingItems.length,
                                       itemBuilder: (context, index) {
-                                        // Convert values safely
-                                        double rate = double.tryParse(existingPurchaseItems[index]["rate"].toString()) ?? 0.0;
-                                        double quantity = double.tryParse(existingPurchaseItems[index]["quantity"].toString()) ?? 0.0;
-                                        double subtotal = rate * quantity; // Correct calculation
-                                        double discount = double.tryParse(existingPurchaseItems[index]["discount"].toString()) ?? 0.0;
+                                        // Debugging: Print the item to verify data types
+                                        print("Item at index $index: ${existingItems[index]}");
 
-                                        return Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            // Item Row
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Text("#${index + 1}  ${existingPurchaseItems[index]["itemName"]}",
-                                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                                Text("₹ ${subtotal.toStringAsFixed(2)}",
-                                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                              ],
-                                            ),
-                                            SizedBox(height: 5),
+                                        // Safely convert values to double
+                                        double rate = double.tryParse(existingItems[index]["rate"].toString()) ?? 0.0;
+                                        double quantity = double.tryParse(existingItems[index]["quantity"].toString()) ?? 0.0;
+                                        double discount = double.tryParse(existingItems[index]["discount"].toString()) ?? 0.0;
+                                        double tax = double.tryParse(existingItems[index]["taxValue"].toString()) ?? 0.0;
 
-                                            // Item Subtotal
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Text("Item Subtotal:", style: TextStyle(color: Colors.grey[600])),
-                                                Text(
-                                                  "$rate ${existingPurchaseItems[index]["unit"]} x $quantity = ₹ ${subtotal.toStringAsFixed(2)}",
-                                                  style: TextStyle(color: Colors.grey[600]),
+                                        double subtotal = rate * quantity;
+                                        double discountAmt = (subtotal * discount) / 100;
+                                        double taxAmt = ((subtotal - discountAmt) * tax) / 100;
+                                        double finalAmount = subtotal - discountAmt + taxAmt;
+
+                                        return GestureDetector(
+                                          onTap: () async {
+                                            final updatedItem = await Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => Add_Items_to_Sale(
+                                                  title: "Edit Item",
+                                                  existingItem: {
+                                                    'discount': existingItems[index]['discount'].toString(),
+                                                    'itemName': existingItems[index]['itemName'].toString(),
+                                                    'quantity': existingItems[index]['quantity'].toString(),
+                                                    'rate': existingItems[index]['rate'].toString(),
+                                                    'subtotal': subtotal.toString(),
+                                                    'tax': existingItems[index]['tax'].toString(),
+                                                    'taxValue': existingItems[index]['taxValue'].toString(),
+                                                    'unit': existingItems[index]['unit'].toString(),
+                                                  },
                                                 ),
-                                              ],
-                                            ),
+                                              ),
+                                            );
 
-                                            SizedBox(height: 5),
-
-                                            // Discount Row
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                RichText(
-                                                  text: TextSpan(
-                                                    text: "Discount (%): ",
-                                                    style: TextStyle(color: Colors.orange[700], fontSize: 14),
-                                                    children: [
-                                                      TextSpan(
-                                                        text: discount.toString(),
-                                                        style: TextStyle(fontWeight: FontWeight.bold),
-                                                      ),
-                                                    ],
+                                            if (updatedItem != null) {
+                                              setState(() {
+                                                existingItems[index] = {
+                                                  'discount': double.tryParse(updatedItem['discount'].toString()) ?? 0.0,
+                                                  'itemName': updatedItem['itemName'] ?? "",
+                                                  'quantity': double.tryParse(updatedItem['quantity'].toString()) ?? 0.0,
+                                                  'rate': double.tryParse(updatedItem['rate'].toString()) ?? 0.0,
+                                                  'subtotal': double.tryParse(updatedItem['subtotal'].toString()) ?? 0.0,
+                                                  'tax': double.tryParse(updatedItem['tax'].toString()) ?? 0.0,
+                                                  'taxValue': double.tryParse(updatedItem['taxValue'].toString()) ?? 0.0,
+                                                  'unit': updatedItem['unit'] ?? "",
+                                                };
+                                              });
+                                            }
+                                          },
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              // Item Row with Delete Button
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      "#${index + 1}  ${existingItems[index]["itemName"]}",
+                                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                                    ),
                                                   ),
-                                                ),
-                                                Text(
-                                                  "₹ ${((subtotal * discount) / 100).toStringAsFixed(2)}", // Corrected discount calculation
-                                                  style: TextStyle(color: Colors.orange[700], fontWeight: FontWeight.bold),
-                                                ),
-                                              ],
-                                            ),
+                                                  Text(
+                                                    "₹ ${finalAmount.toStringAsFixed(2)}",
+                                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                                  ),
+                                                  IconButton(
+                                                    icon: Icon(Icons.delete, color: Colors.red),
+                                                    onPressed: () {
+                                                      setState(() {
+                                                        existingItems.removeAt(index); // Remove item
+                                                      });
+                                                    },
+                                                  ),
+                                                ],
+                                              ),
+                                              SizedBox(height: 5),
 
-                                            SizedBox(height: 5),
+                                              // Item Subtotal
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Text("Item Subtotal:", style: TextStyle(color: Colors.grey[600])),
+                                                  Text(
+                                                    "$rate ${existingItems[index]["unit"]} x $quantity = ₹ ${subtotal.toStringAsFixed(2)}",
+                                                    style: TextStyle(color: Colors.grey[600]),
+                                                  ),
+                                                ],
+                                              ),
 
-                                            // Tax Row
-                                            Text(
-                                              "${existingPurchaseItems[index]["tax"]}",
-                                              style: TextStyle(color: Colors.grey[600]),
-                                            ),
+                                              SizedBox(height: 5),
 
-                                            SizedBox(height: 10),
-                                          ],
+                                              // Discount Row
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  RichText(
+                                                    text: TextSpan(
+                                                      text: "Discount (%): ",
+                                                      style: TextStyle(color: Colors.orange[700], fontSize: 14),
+                                                      children: [
+                                                        TextSpan(
+                                                          text: discount.toString(),
+                                                          style: TextStyle(fontWeight: FontWeight.bold),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    "₹ ${discountAmt.toStringAsFixed(2)}",
+                                                    style: TextStyle(color: Colors.orange[700], fontWeight: FontWeight.bold),
+                                                  ),
+                                                ],
+                                              ),
+
+                                              SizedBox(height: 5),
+
+                                              // Tax Row
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    "GST (${tax.toString()}%):",
+                                                    style: TextStyle(color: Colors.grey[600]),
+                                                  ),
+                                                  Text(
+                                                    "₹ ${taxAmt.toStringAsFixed(2)}",
+                                                    style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                                                  ),
+                                                ],
+                                              ),
+
+                                              SizedBox(height: 10),
+                                            ],
+                                          ),
                                         );
                                       },
                                     ),
                                     Divider(color: Colors.grey[300]),
 
-                                    // Total Details
+                                    // Total Calculation Section
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text("Total Disc: 9.0"),
-                                        Text("Total Tax Amt: 0.0"),
+                                        Text("Total Discount: ₹ ${calculateTotalDiscount(existingItems).toStringAsFixed(2)}"),
+                                        Text("Total Tax: ₹ ${calculateTotalTax(existingItems).toStringAsFixed(2)}"),
                                       ],
                                     ),
                                     SizedBox(height: 5),
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text("Total Qty: 10.0"),
+                                        Text("Total Qty: ${calculateTotalQuantity(existingItems)}"),
                                         Text(
-                                          "Subtotal: 91.00",
+                                          "Total Amount: ₹ ${calculateTotalFinalAmount(existingItems).toStringAsFixed(2)}",
                                           style: TextStyle(fontWeight: FontWeight.bold),
                                         ),
                                       ],
@@ -631,6 +879,8 @@ class _Purchase_Details extends State<Purchase_Details> {
                       ),
                     ),
 
+
+                  ///total amount
                   Container(
                     padding: EdgeInsets.all(16),
                     child: Column(
@@ -814,10 +1064,12 @@ class _Purchase_Details extends State<Purchase_Details> {
                       ],
                     ),
                   ),
+
+                  ///payment type
                   Container(
                     color: Colors.white,
                     child: Padding(
-                      padding: const EdgeInsets.only(left: 16.0,right: 16,bottom: 16,top: 16),
+                      padding: const EdgeInsets.only(left: 16.0,right: 16,bottom: 30,top: 16),
                       child: Column(
                         children: [
                           Padding(
@@ -831,86 +1083,7 @@ class _Purchase_Details extends State<Purchase_Details> {
                                     alignment: Alignment.topRight,
                                     child: GestureDetector(
                                       onTap: () {
-                                        if(is_readyonly!=true) {
-                                        showModalBottomSheet(
-                                          backgroundColor: Colors.white,
-                                          context: context,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.vertical(
-                                                top: Radius.circular(20)),
-                                          ),
-                                          builder: (context) {
-                                            return StatefulBuilder(
-                                              builder: (context,
-                                                  setStateModal) { // Use setStateModal for local state changes
-                                                return Padding(
-                                                  padding: const EdgeInsets.all(
-                                                      16.0),
-                                                  child: Column(
-                                                    mainAxisSize: MainAxisSize
-                                                        .min,
-                                                    children: [
-                                                      Text("Payment Type",
-                                                        style: TextStyle(
-                                                            fontSize: 22),),
-                                                      ListTile(
-                                                        leading: Icon(
-                                                            Icons.money,
-                                                            color: Colors
-                                                                .green),
-                                                        title: Text("Cash"),
-                                                        onTap: () {
-                                                          setState(() {
-                                                            selectedPaymentType =
-                                                            "Cash";
-                                                          });
-                                                          Navigator.pop(
-                                                              context);
-                                                        },
-                                                        tileColor: selectedPaymentType ==
-                                                            "Cash"
-                                                            ? Colors.grey[200]
-                                                            : null,
-                                                      ),
-                                                      ListTile(
-                                                        leading: Icon(
-                                                            Icons.receipt_long,
-                                                            color: Colors
-                                                                .yellow),
-                                                        title: Text("Cheque"),
-                                                        onTap: () {
-                                                          setState(() {
-                                                            selectedPaymentType =
-                                                            "Cheque";
-                                                          });
-                                                          Navigator.pop(
-                                                              context);
-                                                        },
-                                                        tileColor: selectedPaymentType ==
-                                                            "Cheque"
-                                                            ? Colors.grey[200]
-                                                            : null,
-                                                      ),
-                                                      Divider(),
-                                                      ListTile(
-                                                        leading: Icon(Icons.add,
-                                                            color: Colors.blue),
-                                                        title: Text(
-                                                            "Add Bank A/c"),
-                                                        onTap: () {
-                                                          // Handle "Add Bank A/c" logic
-                                                          Navigator.pop(
-                                                              context);
-                                                        },
-                                                      ),
-                                                    ],
-                                                  ),
-                                                );
-                                              },
-                                            );
-                                          },
-                                        );
-                                       }
+                                        select_payment_method(context);
                                       },
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -945,141 +1118,6 @@ class _Purchase_Details extends State<Purchase_Details> {
                               ],
                             ),
                           ),
-
-                          SizedBox(height: 10,),
-                          Divider(),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8.0),
-                            child: Column(
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text("State", style: TextStyle(fontSize: 15, color: Colors.black)),
-                                    Expanded(
-                                      child: Align(
-                                        alignment: Alignment.topRight,
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            if(is_readyonly!=true) {
-                                              showModalBottomSheet(
-                                                backgroundColor: Colors.white,
-                                                context: context,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius
-                                                      .vertical(
-                                                      top: Radius.circular(20)),
-                                                ),
-                                                builder: (context) {
-                                                  return StatefulBuilder(
-                                                    builder: (context,
-                                                        setStateModal) {
-                                                      return Padding(
-                                                        padding: const EdgeInsets
-                                                            .all(16.0),
-                                                        child: Column(
-                                                          mainAxisSize: MainAxisSize
-                                                              .min,
-                                                          children: [
-                                                            Text(
-                                                              "Select State",
-                                                              style: TextStyle(
-                                                                  fontSize: 22),
-                                                            ),
-                                                            Divider(),
-                                                            Expanded(
-                                                              child: ListView(
-                                                                children: [
-                                                                  for (var state in [
-                                                                    "Andhra Pradesh",
-                                                                    "Arunachal Pradesh",
-                                                                    "Assam",
-                                                                    "Bihar",
-                                                                    "Chhattisgarh",
-                                                                    "Goa",
-                                                                    "Gujarat",
-                                                                    "Haryana",
-                                                                    "Himachal Pradesh",
-                                                                    "Jharkhand",
-                                                                    "Karnataka",
-                                                                    "Kerala",
-                                                                    "Madhya Pradesh",
-                                                                    "Maharashtra",
-                                                                    "Manipur",
-                                                                    "Meghalaya",
-                                                                    "Mizoram",
-                                                                    "Nagaland",
-                                                                    "Odisha",
-                                                                    "Punjab",
-                                                                    "Rajasthan",
-                                                                    "Sikkim",
-                                                                    "Tamil Nadu",
-                                                                    "Telangana",
-                                                                    "Tripura",
-                                                                    "Uttar Pradesh",
-                                                                    "Uttarakhand",
-                                                                    "West Bengal",
-                                                                    "Andaman and Nicobar Islands",
-                                                                    "Chandigarh",
-                                                                    "Dadra and Nagar Haveli and Daman and Diu",
-                                                                    "Delhi",
-                                                                    "Jammu and Kashmir",
-                                                                    "Ladakh",
-                                                                    "Lakshadweep",
-                                                                    "Puducherry"
-                                                                  ])
-                                                                    ListTile(
-                                                                      title: Text(
-                                                                          state),
-                                                                      onTap: () {
-                                                                        setState(() {
-                                                                          Country =
-                                                                              state;
-                                                                        });
-                                                                        Navigator
-                                                                            .pop(
-                                                                            context);
-                                                                      },
-                                                                      tileColor: Country ==
-                                                                          state
-                                                                          ? Colors
-                                                                          .grey[200]
-                                                                          : null,
-                                                                    ),
-                                                                ],
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      );
-                                                    },
-                                                  );
-                                                },
-                                              );
-                                            }
-                                          },
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                Country ?? "Select", // Fallback if null
-                                                style: TextStyle(
-                                                  fontSize: 15,
-                                                  color: Colors.black,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                              Icon(Icons.arrow_drop_down, color: Colors.grey),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
                         ],
                       ),
                     ),
@@ -1100,13 +1138,7 @@ class _Purchase_Details extends State<Purchase_Details> {
                               children: [
                                 Expanded(
                                   child: TextField(
-                                    readOnly: is_readyonly,
-                                    onChanged: (value){
-                                      setState(() {
-                                        description_controller.text = value;
-                                      });
-                                    },
-                                    controller:description_controller,
+                                    controller: description_controller,
                                     decoration: InputDecoration(
                                       labelText: "Description",
                                       hintText: 'Add Note',
@@ -1129,39 +1161,7 @@ class _Purchase_Details extends State<Purchase_Details> {
                                 SizedBox(width: 10.0),
                                 GestureDetector(
                                   onTap:(){
-                                    if(is_readyonly!=true) {
-                                      showDialog(
-                                        context: context,
-                                        builder: (BuildContext context) {
-                                          return AlertDialog(
-                                            backgroundColor: Colors.white,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.zero,
-                                            ),
-                                            content: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                ListTile(
-                                                  title: Text("Camera"),
-                                                  onTap: () {
-                                                    Navigator.pop(
-                                                        context); // Close the dialog
-                                                  },
-                                                ),
-                                                Divider(),
-                                                ListTile(
-                                                  title: Text("Gallery"),
-                                                  onTap: () {
-                                                    Navigator.pop(
-                                                        context); // Close the dialog
-                                                  },
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        },
-                                      );
-                                    }
+                                    uploadImage();
                                   }, // Show the dialog on tap
                                   child: Container(
                                     width: 75,
@@ -1171,14 +1171,13 @@ class _Purchase_Details extends State<Purchase_Details> {
                                       borderRadius: BorderRadius.circular(8.0),
                                       color: Colors.grey[100],
                                     ),
-                                    child: Icon(FlutterRemix.camera_line),
+                                    child: image!=null?Image.memory(base64Decode(image!)):Icon(Remix.folder_image_line),
                                   ),
                                 ),
                               ],
                             ),
                           ),
                         ),
-
                       ],
                     ),
                   ),
@@ -1194,271 +1193,227 @@ class _Purchase_Details extends State<Purchase_Details> {
       ),
     );
   }
-}
+  void select_payment_method(BuildContext context) {
+    // Fetch bank accounts from Firebase
+    User? user = FirebaseAuth.instance.currentUser;
 
-List<String> PrefixName = ["None"];
-List<int> PrefixNumber = [0];
+    if (user == null) {
+      print("No user logged in");
+      return;
+    }
+    String userId = user.uid;
 
-int _selectedButton = 0;
-String? newPrefix;
+    DatabaseReference ref = FirebaseDatabase.instance
+        .ref()
+        .child('users')
+        .child('$userId')
+        .child('Bank_accounts')
+        .child('Bank');
 
-void showInvoiceSheet(BuildContext context) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(
-        top: Radius.circular(20),
+    showModalBottomSheet(
+      backgroundColor: Colors.white,
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
       ),
-    ),
-    backgroundColor: Colors.white,
-    builder: (BuildContext context) {
-      return StatefulBuilder(
-        builder: (context, setState) {
-          return Padding(
-            padding: EdgeInsets.only(
-              left: 2.0,
-              right: 2.0,
-              top: 10.0,
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: SingleChildScrollView(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(20),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Payment Type", style: TextStyle(fontSize: 22)),
+                      IconButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
+                        icon: Icon(Remix.close_line),
+                      ),
+                    ],
+                  ),
+                  Divider(color: Colors.grey.shade200, thickness: 1),
+                  ListTile(
+                    leading: Icon(Icons.money, color: Colors.green),
+                    title: Text("Cash"),
+                    onTap: () {
+                      setState(() {
+                        selectedPaymentType = "Cash";
+                      });
+                      Navigator.pop(context);
+                    },
+                    tileColor: selectedPaymentType == "Cash"
+                        ? Colors.grey[200]
+                        : null,
+                  ),
+                  // Fetch and display bank accounts
+                  FutureBuilder(
+                    future: ref.once(),
+                    builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return CircularProgressIndicator();
+                      } else if (snapshot.hasError) {
+                        return Text('Error: ${snapshot.error}');
+                      } else if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+                        return Text('No bank accounts found');
+                      } else {
+                        // Parse the bank accounts data
+                        Map<dynamic, dynamic> banks = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+                        return Column(
+                          children: banks.entries.map((entry) {
+                            var bank = entry.value;
+                            return ListTile(
+                              leading: Icon(Icons.account_balance, color: Colors.blue),
+                              title: Text(bank['bank_name']),
+                              subtitle: Text("Account Holder: ${bank['holder_name']}"),
+                              onTap: () {
+                                setState(() {
+                                  selectedPaymentType = bank['bank_name'];
+                                });
+                                Navigator.pop(context);
+                              },
+                              tileColor: selectedPaymentType == bank['bank_name']
+                                  ? Colors.grey[200]
+                                  : null,
+                            );
+                          }).toList(),
+                        );
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.add, color: Colors.blue),
+                    title: Text("Add Bank A/c"),
+                    onTap: () {
+                      // Handle "Add Bank A/c" logic
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+  void showInvoiceSheet(BuildContext context, Function(int) updateInvoice) {
+    int? localInvoiceNo = invoice_no; // Temporary variable
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      backgroundColor: Colors.white,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 2.0,
+                right: 2.0,
+                top: 10.0,
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: SingleChildScrollView(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(10.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                "Change Receipt No.",
+                                style: TextStyle(fontSize: 20),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: Icon(Icons.cancel, size: 30),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.topLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 10.0),
+                          child: Text(
+                            "Invoice Prefix",
+                            style: TextStyle(fontSize: 15),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: TextField(
+                          onChanged: (val) {
+                            setState(() {
+                              localInvoiceNo = int.tryParse(val) ?? 0;
+                            });
+                          },
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: "Invoice No",
+                            hintText: "Enter Invoice No",
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.0),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.0),
+                              borderSide: BorderSide(color: Colors.blue, width: 2.0),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.0),
+                              borderSide: BorderSide(color: Colors.grey, width: 1.0),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              backgroundColor: Colors.blueAccent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            ),
+                            onPressed: () {
+                              updateInvoice(localInvoiceNo!);
+                              Navigator.pop(context);
+                            },
+                            child: Text("SAVE"),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(10.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: Text(
-                              "Change Receipt No.",
-                              style: TextStyle(fontSize: 20),
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Icon(
-                              Icons.cancel,
-                              size: 30,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Align(
-                      alignment: Alignment.topLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 10.0),
-                        child: Text(
-                          "Invoice Prefix",
-                          style: TextStyle(fontSize: 15),
-                        ),
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SizedBox(
-                            height: 50,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: PrefixName.length,
-                              itemBuilder: (context, index) {
-                                return Padding(
-                                  padding:
-                                  const EdgeInsets.symmetric(horizontal: 4.0),
-                                  child: TextButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _selectedButton = index;
-                                      });
-                                    },
-                                    child: Container(
-                                      padding: EdgeInsets.symmetric(
-                                          horizontal: 16, vertical: 8),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: index == _selectedButton
-                                              ? Colors.redAccent
-                                              : Colors.grey,
-                                        ),
-                                        borderRadius: BorderRadius.circular(20),
-                                        color: index == _selectedButton
-                                            ? Colors.red[50]
-                                            : Colors.transparent,
-                                      ),
-                                      child: Text(
-                                        '${PrefixName[index]}',
-                                        style: TextStyle(
-                                          color: index == _selectedButton
-                                              ? Colors.redAccent
-                                              : Colors.black,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (context) {
-                                return AlertDialog(
-                                  title: Text(
-                                    'Add Prefix',
-                                    style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.zero,
-                                  ),
-                                  backgroundColor: Colors.white,
-                                  content: Padding(
-                                    padding: const EdgeInsets.all(4.0),
-                                    child: SizedBox(
-                                      width: 600,
-                                      child: TextField(
-                                        keyboardType: TextInputType.text,
-                                        decoration: InputDecoration(
-                                          labelText: "Prefix Name",
-                                          hintText: "e.g. INV",
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                            BorderRadius.circular(8.0),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius:
-                                            BorderRadius.circular(8.0),
-                                            borderSide: BorderSide(
-                                                color: Colors.blueAccent,
-                                                width: 2.0),
-                                          ),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderRadius:
-                                            BorderRadius.circular(8.0),
-                                            borderSide: BorderSide(
-                                                color: Colors.grey, width: 1.0),
-                                          ),
-                                        ),
-                                        onChanged: (value) {
-                                          newPrefix = value;
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.pop(context);
-                                      },
-                                      child: Text(
-                                        "Cancel",
-                                        style: TextStyle(color: Colors.blueAccent),
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: () {
-                                        if (newPrefix != null &&
-                                            newPrefix!.isNotEmpty) {
-                                          setState(() {
-                                            PrefixName.add(newPrefix!);
-                                            newPrefix = null;
-                                          });
-                                          Navigator.pop(context);
-                                        }
-                                      },
-                                      child: Text(
-                                        "Save",
-                                        style: TextStyle(color: Colors.blueAccent),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            );
-                          },
-                          child: Container(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey),
-                              borderRadius: BorderRadius.circular(20),
-                              color: Colors.grey[50],
-                            ),
-                            child: Text(
-                              'Add Prefix',
-                              style: TextStyle(color: Colors.black),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: TextField(
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: "Invoice No",
-                          hintText: "Invoice No",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                            borderSide:
-                            BorderSide(color: Colors.blue, width: 2.0),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                            borderSide:
-                            BorderSide(color: Colors.grey, width: 1.0),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            backgroundColor: Colors.blueAccent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 12),
-                          ),
-                          onPressed: () {
-                            // Save logic
-                          },
-                          child: Text("SAVE"),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
-            ),
-          );
-        },
-      );
-    },
-  );
+            );
+          },
+        );
+      },
+    );
+  }
 }

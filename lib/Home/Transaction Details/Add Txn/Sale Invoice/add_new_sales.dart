@@ -63,7 +63,6 @@ class AddNewSales extends State<Add_new_Sales> {
   double calculateTotalQuantity() {
     return addedItems.fold(0.0, (sum, item) => sum + (double.tryParse(item["quantity"].toString()) ?? 0.0));
   }
-
   double calculateTotalDiscount() {
     return addedItems.fold(0.0, (sum, item) {
       double subtotal = (double.tryParse(item["rate"].toString()) ?? 0.0) * (double.tryParse(item["quantity"].toString()) ?? 0.0);
@@ -71,7 +70,6 @@ class AddNewSales extends State<Add_new_Sales> {
       return sum + (subtotal * discount / 100);
     });
   }
-
   double calculateTotalTax() {
     return addedItems.fold(0.0, (sum, item) {
       double subtotal = (double.tryParse(item["rate"].toString()) ?? 0.0) * (double.tryParse(item["quantity"].toString()) ?? 0.0);
@@ -81,7 +79,6 @@ class AddNewSales extends State<Add_new_Sales> {
       return sum + (discountedSubtotal * tax / 100);
     });
   }
-
   double calculateTotalFinalAmount() {
     return addedItems.fold(0.0, (sum, item) {
       double rate = double.tryParse(item["rate"].toString()) ?? 0.0;
@@ -95,6 +92,7 @@ class AddNewSales extends State<Add_new_Sales> {
       return sum + (subtotal - discountAmt + taxAmt);
     });
   }
+
   List<Map<String, dynamic>> addedItems = [];
   void _navigateToAddItemScreen(BuildContext context) async {
     final result = await Navigator.push(
@@ -105,7 +103,7 @@ class AddNewSales extends State<Add_new_Sales> {
     if (result != null) {
       setState(() {
         print(result);
-        addedItems.add(result); // Add new item to the list
+        addedItems.add(result);
       });
     }
   }
@@ -270,8 +268,11 @@ class AddNewSales extends State<Add_new_Sales> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false,
       appBar: AppBar(
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.grey.shade400,
+          statusBarIconBrightness: Brightness.light, // Light icons (for dark backgrounds)
+        ),
         surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
         title: Text('Sale', style: TextStyle(color: Colors.black)),
@@ -296,8 +297,10 @@ class AddNewSales extends State<Add_new_Sales> {
          },
        ),
       body: Container(
+        height: double.infinity,
         color:  Color(0xFFE8E8E8),
         child: SingleChildScrollView(
+            physics: BouncingScrollPhysics(),
             scrollDirection: Axis.vertical,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

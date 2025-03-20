@@ -202,8 +202,8 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
 
       Map<String, dynamic> oldData = Map<String, dynamic>.from(snapshot.value as Map);
       String oldPaymentType = oldData['paymentType'] ?? "Cash";
-      double oldReceivedAmount = double.tryParse(oldData['received'].toString()) ?? 0.0;
-      double oldBalanceDue = double.tryParse(oldData['balance_due'].toString()) ?? 0.0;
+      double oldBalanceDue = double.tryParse(oldData['balance_due']?.toString() ?? "0.0") ?? 0.0;
+      double oldReceivedAmount = double.tryParse(oldData['received']?.toString() ?? "0.0") ?? 0.0;
 
       // Fetch new transaction values
       double newReceivedAmount = double.tryParse(received_money.text) ?? 0.0;
@@ -212,33 +212,43 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
       String phoneNumber = phonenumber_controller.text;
 
       // Fetch bank balances
-      double oldBankBalance = 0.0, oldCashBalance = 0.0, newBankBalance = 0.0, newCashBalance = 0.0;
+      double newBankBalance = 0.0, newCashBalance = 0.0;
 
       DatabaseEvent bankEvent = await bankRef.once();
       if (bankEvent.snapshot.exists) {
         Map<String, dynamic> bankData = Map<String, dynamic>.from(bankEvent.snapshot.value as Map);
-        oldCashBalance = double.tryParse(bankData['cash']?['total_balance']?.toString() ?? "0.0") ?? 0.0;
-        oldBankBalance = double.tryParse(bankData[oldPaymentType]?['total_balance']?.toString() ?? "0.0") ?? 0.0;
-        newBankBalance = double.tryParse(bankData[newPaymentType]?['total_balance']?.toString() ?? "0.0") ?? 0.0;
-        newCashBalance = oldCashBalance; // Will update if needed
+        newCashBalance = double.tryParse(bankData['Cash']?['total_balance']?.toString() ?? "0.0") ?? 0.0;
+        newBankBalance = double.tryParse(bankData['Bank']?[newPaymentType]?['total_balance']?.toString() ?? "0.0") ?? 0.0;
       }
 
-      // ✅ **Remove the old transaction from the previous payment type**
+      // ✅ Reverse Old Payment Effect (If Payment Type Changed)
       if (oldPaymentType == "Cash") {
-        oldCashBalance -= oldReceivedAmount;
-        await bankRef.child("Cash/Cash_transaction").child(widget.transactionId).remove();
+        newCashBalance -= oldReceivedAmount; // Remove old cash transaction
+        await bankRef.child("Cash/Cash_transaction/${widget.transactionId}").remove();
       } else {
-        oldBankBalance -= oldReceivedAmount;
-        await bankRef.child("Bank/$oldPaymentType/Bank_transaction").child(widget.transactionId).remove();
+        newBankBalance -= oldReceivedAmount; // Remove old bank transaction
+        await bankRef.child("Bank/$oldPaymentType/Bank_transaction/${widget.transactionId}").remove();
       }
 
-      // ✅ **Update the new payment type**
+      // ✅ Add received money to the selected payment type
       if (newPaymentType == "Cash") {
         newCashBalance += newReceivedAmount;
         await bankRef.child("Cash/Cash_transaction").child(widget.transactionId).set({
           "amount": newReceivedAmount,
           "type": "Sale",
           "date": DateTime.now().toIso8601String(),
+          "transaction": {
+            "customer": customer_controller.text,
+            "phone": phoneNumber,
+            "received": newReceivedAmount.toString(),
+            "balance_due": newBalanceDue.toString(),
+            "description": description_controller.text,
+            "invoice_no": invoice_no,
+            "paymentType": newPaymentType,
+            "type": type,
+            "Image": image ?? "Null",
+            "items": existingItems
+          }
         });
       } else {
         newBankBalance += newReceivedAmount;
@@ -246,46 +256,69 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
           "amount": newReceivedAmount,
           "type": "Sale",
           "date": DateTime.now().toIso8601String(),
+          "transaction": {
+            "customer": customer_controller.text,
+            "phone": phoneNumber,
+            "received": newReceivedAmount.toString(),
+            "balance_due": newBalanceDue.toString(),
+            "description": description_controller.text,
+            "invoice_no": invoice_no,
+            "paymentType": newPaymentType,
+            "type": type,
+            "Image": image ?? "Null",
+            "items": existingItems
+          }
         });
       }
 
-      // ✅ **Update bank balances**
+      // ✅ Update bank balances
       await bankRef.child("Cash").update({"total_balance": newCashBalance});
       await bankRef.child("Bank/$newPaymentType").update({"total_balance": newBankBalance});
 
-      // ✅ **Update the 'Parties' node**
+      // ✅ Step 3: Update the 'Parties' node
       DatabaseReference partyRef = partiesRef.child(phoneNumber);
       DatabaseEvent partyEvent = await partyRef.once();
       double totalPartyAmount = 0.0;
 
+      // Fetch existing party data
       if (partyEvent.snapshot.exists) {
         Map<dynamic, dynamic> partyData = partyEvent.snapshot.value as Map<dynamic, dynamic>;
         double existingPartyAmount = double.tryParse(partyData["total_amount"].toString()) ?? 0.0;
-        totalPartyAmount = existingPartyAmount + (oldBalanceDue - newBalanceDue);
+
+        // ✅ Reverse the effect of the previous transaction
+        totalPartyAmount = existingPartyAmount + oldBalanceDue;
       } else {
-        totalPartyAmount = -newBalanceDue; // Initial party balance
+        totalPartyAmount = 0.0; // New party, no previous transactions
       }
 
-      // ✅ **Update Party Details**
+      // ✅ Apply the new balance_due
+      totalPartyAmount -= newBalanceDue;
+
+      // ✅ Update Party Details
       await partyRef.update({
         "name": customer_controller.text,
         "phone": phoneNumber,
         "total_amount": totalPartyAmount.toString(),
       });
 
-      // ✅ **Append transaction under Parties/{phone}/transactions**
+      // ✅ Append full transaction under Parties/{phone}/transactions
       await partyRef.child("transactions").update({
         widget.transactionId: {
           "customer": customer_controller.text,
           "phone": phoneNumber,
           "received": newReceivedAmount.toString(),
           "balance_due": newBalanceDue.toString(),
+          "description": description_controller.text,
+          "invoice_no": invoice_no,
           "paymentType": newPaymentType,
+          "type": type,
+          "Image": image ?? "Null",
+          "items": existingItems
         }
       });
 
-      // ✅ **Prepare and update the transaction**
-      Map<String, dynamic> updatedData = {
+      // ✅ Update the transaction in the main Transactions node
+      await transactionRef.update({
         "customer": customer_controller.text,
         "phone": phoneNumber,
         "received": newReceivedAmount.toString(),
@@ -295,21 +328,8 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
         "paymentType": newPaymentType,
         "type": type,
         "Image": image ?? "Null",
-        "items": {
-          for (int i = 0; i < existingItems.length; i++)
-            "item_$i": {
-              "discount": existingItems[i]['discount'],
-              "itemName": existingItems[i]['itemName'],
-              "quantity": existingItems[i]['quantity'],
-              "rate": existingItems[i]['rate'],
-              "subtotal": existingItems[i]['subtotal'],
-              "tax": existingItems[i]['tax'],
-              "unit": existingItems[i]['unit'],
-            }
-        }
-      };
-
-      await transactionRef.update(updatedData);
+        "items": existingItems
+      });
 
       print("Transaction updated successfully");
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Transaction updated successfully!")));
@@ -319,6 +339,7 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to update transaction!")));
     }
   }
+
   Future<void> updatePartyTransaction(String userId, String partyId, double oldAmount, double newAmount) async {
     DatabaseReference partyRef = FirebaseDatabase.instance.ref("users/$userId/Parties/$partyId");
     DatabaseEvent partyEvent = await partyRef.once();
@@ -399,6 +420,10 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.grey.shade400,
+          statusBarIconBrightness: Brightness.light, // Light icons (for dark backgrounds)
+        ),
         surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
         title: Text('Sale', style: TextStyle(color: Colors.black)),
@@ -462,7 +487,8 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
                               setState(() {
                                 invoice_no = newInvoice;
                               });
-                            });                          },
+                            });
+                           },
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -545,6 +571,7 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
               ),
               SizedBox(height: 15,),
 
+              ///Textfields
               Container(
                 color: Colors.white,
                 padding: EdgeInsets.all(16),
@@ -628,7 +655,7 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
                 ),
               ),
 
-              //Billed Items
+              ///Billed Items
               if (existingItems.isNotEmpty)
                 Container(
                   color: Colors.white,
@@ -689,144 +716,150 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
                             padding: EdgeInsets.all(12), // Inner padding
                             child: Column(
                               children: [
-                                ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: NeverScrollableScrollPhysics(),
-                                  itemCount: existingItems.length,
-                                  itemBuilder: (context, index) {
-                                    // Debugging: Print the item to verify data types
-                                    print("Item at index $index: ${existingItems[index]}");
+                               ListView.builder(
+                              shrinkWrap: true,
+                              physics: NeverScrollableScrollPhysics(),
+                              itemCount: existingItems.length,
+                              itemBuilder: (context, index) {
+                                // Debugging: Print the item to verify data types
+                                print("Item at index $index: ${existingItems[index]}");
 
-                                    // Safely convert values to double
-                                    double rate = (existingItems[index]["rate"] is String)
-                                        ? double.tryParse(existingItems[index]["rate"]) ?? 0.0
-                                        : (existingItems[index]["rate"] ?? 0.0).toDouble();
+                                // Safely convert values to double
+                                double rate = double.tryParse(existingItems[index]["rate"].toString()) ?? 0.0;
+                                double quantity = double.tryParse(existingItems[index]["quantity"].toString()) ?? 0.0;
+                                double discount = double.tryParse(existingItems[index]["discount"].toString()) ?? 0.0;
+                                double tax = double.tryParse(existingItems[index]["taxValue"].toString()) ?? 0.0;
 
-                                    double quantity = (existingItems[index]["quantity"] is String)
-                                        ? double.tryParse(existingItems[index]["quantity"]) ?? 0.0
-                                        : (existingItems[index]["quantity"] ?? 0.0).toDouble();
+                                double subtotal = rate * quantity;
+                                double discountAmt = (subtotal * discount) / 100;
+                                double taxAmt = ((subtotal - discountAmt) * tax) / 100;
+                                double finalAmount = subtotal - discountAmt + taxAmt;
 
-                                    double discount = (existingItems[index]["discount"] is String)
-                                        ? double.tryParse(existingItems[index]["discount"]) ?? 0.0
-                                        : (existingItems[index]["discount"] ?? 0.0).toDouble();
-
-                                    double tax = (existingItems[index]["taxValue"] is String)
-                                        ? double.tryParse(existingItems[index]["taxValue"]) ?? 0.0
-                                        : (existingItems[index]["taxValue"] ?? 0.0).toDouble();
-
-                                    // Calculate values
-                                    double subtotal = rate * quantity;
-                                    double discountAmt = (subtotal * discount) / 100;
-                                    double taxAmt = ((subtotal - discountAmt) * tax) / 100;
-                                    double finalAmount = subtotal - discountAmt + taxAmt;
-
-                                    return GestureDetector(
-                                      onTap: () async {
-                                        final updatedItem = await Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) => Add_Items_to_Sale(
-                                              title: "Edit Item",
-                                              existingItem: existingItems[index], // Pass the item data
-                                            ),
-                                          ),
-                                        );
-
-                                        // If the user saves the edited item, update the list
-                                        if (updatedItem != null) {
-                                          setState(() {
-                                            existingItems[index] = updatedItem; // Update the item in the list
-                                          });
-                                        }
-                                      },
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          // Item Row with Delete Button
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                    "#${index + 1}  ${existingItems[index]["itemName"]}",
-                                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                              ),
-                                              Text(
-                                                "₹ ${finalAmount.toStringAsFixed(2)}",
-                                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                              ),
-                                              IconButton(
-                                                icon: Icon(Icons.delete, color: Colors.red),
-                                                onPressed: () {
-                                                  setState(() {
-                                                    existingItems.removeAt(index); // Remove item
-                                                  });
-                                                },
-                                              ),
-                                            ],
-                                          ),
-                                          SizedBox(height: 5),
-
-                                          // Item Subtotal
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text("Item Subtotal:", style: TextStyle(color: Colors.grey[600])),
-                                              Text(
-                                                "$rate ${existingItems[index]["unit"]} x $quantity = ₹ ${subtotal.toStringAsFixed(2)}",
-                                                style: TextStyle(color: Colors.grey[600]),
-                                              ),
-                                            ],
-                                          ),
-
-                                          SizedBox(height: 5),
-
-                                          // Discount Row
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              RichText(
-                                                text: TextSpan(
-                                                  text: "Discount (%): ",
-                                                  style: TextStyle(color: Colors.orange[700], fontSize: 14),
-                                                  children: [
-                                                    TextSpan(
-                                                      text: discount.toString(),
-                                                      style: TextStyle(fontWeight: FontWeight.bold),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              Text(
-                                                "₹ ${discountAmt.toStringAsFixed(2)}",
-                                                style: TextStyle(color: Colors.orange[700], fontWeight: FontWeight.bold),
-                                              ),
-                                            ],
-                                          ),
-
-                                          SizedBox(height: 5),
-
-                                          // Tax Row
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                "GST (${tax.toString()}%):",
-                                                style: TextStyle(color: Colors.grey[600]),
-                                              ),
-                                              Text(
-                                                "₹ ${taxAmt.toStringAsFixed(2)}",
-                                                style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                                              ),
-                                            ],
-                                          ),
-
-                                          SizedBox(height: 10),
-                                        ],
+                                return GestureDetector(
+                                  onTap: () async {
+                                    final updatedItem = await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => Add_Items_to_Sale(
+                                          title: "Edit Item",
+                                          existingItem: {
+                                            'discount': existingItems[index]['discount'].toString(),
+                                            'itemName': existingItems[index]['itemName'].toString(),
+                                            'quantity': existingItems[index]['quantity'].toString(),
+                                            'rate': existingItems[index]['rate'].toString(),
+                                            'subtotal': subtotal.toString(),
+                                            'tax': existingItems[index]['tax'].toString(),
+                                            'taxValue': existingItems[index]['taxValue'].toString(),
+                                            'unit': existingItems[index]['unit'].toString(),
+                                          },
+                                        ),
                                       ),
                                     );
+
+                                    if (updatedItem != null) {
+                                      setState(() {
+                                        existingItems[index] = {
+                                          'discount': double.tryParse(updatedItem['discount'].toString()) ?? 0.0,
+                                          'itemName': updatedItem['itemName'] ?? "",
+                                          'quantity': double.tryParse(updatedItem['quantity'].toString()) ?? 0.0,
+                                          'rate': double.tryParse(updatedItem['rate'].toString()) ?? 0.0,
+                                          'subtotal': double.tryParse(updatedItem['subtotal'].toString()) ?? 0.0,
+                                          'tax': double.tryParse(updatedItem['tax'].toString()) ?? 0.0,
+                                          'taxValue': double.tryParse(updatedItem['taxValue'].toString()) ?? 0.0,
+                                          'unit': updatedItem['unit'] ?? "",
+                                        };
+                                      });
+                                    }
                                   },
-                                ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      // Item Row with Delete Button
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              "#${index + 1}  ${existingItems[index]["itemName"]}",
+                                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                          Text(
+                                            "₹ ${finalAmount.toStringAsFixed(2)}",
+                                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                          ),
+                                          IconButton(
+                                            icon: Icon(Icons.delete, color: Colors.red),
+                                            onPressed: () {
+                                              setState(() {
+                                                existingItems.removeAt(index); // Remove item
+                                              });
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                      SizedBox(height: 5),
+
+                                      // Item Subtotal
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text("Item Subtotal:", style: TextStyle(color: Colors.grey[600])),
+                                          Text(
+                                            "$rate ${existingItems[index]["unit"]} x $quantity = ₹ ${subtotal.toStringAsFixed(2)}",
+                                            style: TextStyle(color: Colors.grey[600]),
+                                          ),
+                                        ],
+                                      ),
+
+                                      SizedBox(height: 5),
+
+                                      // Discount Row
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          RichText(
+                                            text: TextSpan(
+                                              text: "Discount (%): ",
+                                              style: TextStyle(color: Colors.orange[700], fontSize: 14),
+                                              children: [
+                                                TextSpan(
+                                                  text: discount.toString(),
+                                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Text(
+                                            "₹ ${discountAmt.toStringAsFixed(2)}",
+                                            style: TextStyle(color: Colors.orange[700], fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
+                                      ),
+
+                                      SizedBox(height: 5),
+
+                                      // Tax Row
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            "GST (${tax.toString()}%):",
+                                            style: TextStyle(color: Colors.grey[600]),
+                                          ),
+                                          Text(
+                                            "₹ ${taxAmt.toStringAsFixed(2)}",
+                                            style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
+                                      ),
+
+                                      SizedBox(height: 10),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
                                 Divider(color: Colors.grey[300]),
 
                                 // Total Calculation Section
@@ -970,10 +1003,10 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
                                   // TextField
                                   TextField(
                                     readOnly: is_readyonly,
-                                    controller: total_amount,
+                                    controller: received_money,
                                     onChanged: (value) {
                                       setState(() {
-                                        total_amount.text = value;
+                                        received_money.text = value;
                                       });
                                     },
                                     keyboardType: TextInputType.number,
@@ -1024,7 +1057,7 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
               Container(
                 color: Colors.white,
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 16.0,right: 16,bottom: 16,top: 16),
+                  padding: const EdgeInsets.only(left: 16.0,right: 16,bottom: 30,top: 16),
                   child: Column(
                     children: [
                       Padding(
@@ -1038,7 +1071,7 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
                                 alignment: Alignment.topRight,
                                 child: GestureDetector(
                                   onTap: () {
-                                    if(is_readyonly!=true) {
+                                    if(is_readyonly==false){
                                       select_payment_method(context);
                                     }
                                   },
@@ -1071,140 +1104,6 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: 10,),
-                      Divider(),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text("State", style: TextStyle(fontSize: 15, color: Colors.black)),
-                                Expanded(
-                                  child: Align(
-                                    alignment: Alignment.topRight,
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        if(is_readyonly!=true) {
-                                          showModalBottomSheet(
-                                            backgroundColor: Colors.white,
-                                            context: context,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius
-                                                  .vertical(
-                                                  top: Radius.circular(20)),
-                                            ),
-                                            builder: (context) {
-                                              return StatefulBuilder(
-                                                builder: (context,
-                                                    setStateModal) {
-                                                  return Padding(
-                                                    padding: const EdgeInsets
-                                                        .all(16.0),
-                                                    child: Column(
-                                                      mainAxisSize: MainAxisSize
-                                                          .min,
-                                                      children: [
-                                                        Text(
-                                                          "Select State",
-                                                          style: TextStyle(
-                                                              fontSize: 22),
-                                                        ),
-                                                        Divider(),
-                                                        Expanded(
-                                                          child: ListView(
-                                                            children: [
-                                                              for (var state in [
-                                                                "Andhra Pradesh",
-                                                                "Arunachal Pradesh",
-                                                                "Assam",
-                                                                "Bihar",
-                                                                "Chhattisgarh",
-                                                                "Goa",
-                                                                "Gujarat",
-                                                                "Haryana",
-                                                                "Himachal Pradesh",
-                                                                "Jharkhand",
-                                                                "Karnataka",
-                                                                "Kerala",
-                                                                "Madhya Pradesh",
-                                                                "Maharashtra",
-                                                                "Manipur",
-                                                                "Meghalaya",
-                                                                "Mizoram",
-                                                                "Nagaland",
-                                                                "Odisha",
-                                                                "Punjab",
-                                                                "Rajasthan",
-                                                                "Sikkim",
-                                                                "Tamil Nadu",
-                                                                "Telangana",
-                                                                "Tripura",
-                                                                "Uttar Pradesh",
-                                                                "Uttarakhand",
-                                                                "West Bengal",
-                                                                "Andaman and Nicobar Islands",
-                                                                "Chandigarh",
-                                                                "Dadra and Nagar Haveli and Daman and Diu",
-                                                                "Delhi",
-                                                                "Jammu and Kashmir",
-                                                                "Ladakh",
-                                                                "Lakshadweep",
-                                                                "Puducherry"
-                                                              ])
-                                                                ListTile(
-                                                                  title: Text(
-                                                                      state),
-                                                                  onTap: () {
-                                                                    setState(() {
-                                                                      Country =
-                                                                          state;
-                                                                    });
-                                                                    Navigator
-                                                                        .pop(
-                                                                        context);
-                                                                  },
-                                                                  tileColor: Country ==
-                                                                      state
-                                                                      ? Colors
-                                                                      .grey[200]
-                                                                      : null,
-                                                                ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  );
-                                                },
-                                              );
-                                            },
-                                          );
-                                        }
-                                      },
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            Country ?? "Select", // Fallback if null
-                                            style: TextStyle(
-                                              fontSize: 15,
-                                              color: Colors.black,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                          Icon(Icons.arrow_drop_down, color: Colors.grey),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ),
                           ],
                         ),
