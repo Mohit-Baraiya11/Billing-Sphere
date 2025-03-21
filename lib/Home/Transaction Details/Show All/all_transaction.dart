@@ -1,95 +1,113 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class All_Transaction extends StatefulWidget {
   @override
   State<StatefulWidget> createState() => AllTransaction();
 }
 
- class AllTransaction extends State<All_Transaction> {
-  String? selected_timeDuration = "This week";
-  final List<String> time_duration_option = [
-    'Today',
-    'This week',
-    'This month',
-    'This quarter',
-    'This Financial Year',
-    'custom'
-  ];
-
+class AllTransaction extends State<All_Transaction> {
   var firstDate = DateTime.now();
   var lastDate = DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
 
-  void _select_firstDate(BuildContext context) {
-    showDatePicker(
-      context: context,
-      firstDate: DateTime(DateTime.monthsPerYear),
-      lastDate: DateTime(2030),
-    ).then((picked) {
-      if (picked != null) {
-        setState(() {
-          firstDate = picked;
-        });
-      }
-    });
-  }
-  void _select_lastDate(BuildContext context) {
-    showDatePicker(
-      context: context,
-      firstDate: DateTime.now(),
-      lastDate: DateTime(2030),
-    ).then((picked) {
-      if (picked != null) {
-        setState(() {
-          lastDate = picked;
-        });
-      }
-    });
-  }
-
   String? selected_transaction = "All Transactions";
   final List<String> Item_Transaction = [
-    'All Transactions',
-    'Purchase',
-    'Expense',
-    'Sale',
-    'Party To Party [Paid]',
-    'Party To Party [Rcvd]',
-    'Payment-In',
-    'Payment-Out',
-    'Credit Note',
-    'Debit Note',
-    'Sale [Cancelled]',
-    'Purchase (Job Work)',
-    'Sale Order',
-    'Purchase Order',
-    'Estimate',
-    'Delivery Challan',
-    'Sale FA',
-    'Purchase FA',
-    'Journal Entry'
+    "All Transactions",
+    "Payment-in",
+    "Payment-out",
+    "Sale",
+    "Purchase",
+    "Expense"
   ];
 
-  String selected_party = "All Party";
-  final List<String> Item_party = [
-    "Mohit",
-    "All Party"
-  ];
-  List<String> filtered_Party = [];
+  List<Map<String, dynamic>> transactions = [];
+  List<Map<String, dynamic>> filteredTransactions = [];
 
   @override
   void initState() {
     super.initState();
-    filtered_Party =  Item_party;
+    fetchTransactions();
   }
+
+  void fetchTransactions() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    String userId = user.uid;
+    DatabaseReference ref = FirebaseDatabase.instance.ref("users/$userId/Transactions");
+
+    DatabaseEvent event = await ref.once();
+    if (event.snapshot.value != null) {
+      Map<dynamic, dynamic> data = event.snapshot.value as Map<dynamic, dynamic>;
+      List<Map<String, dynamic>> transactionList = [];
+
+      data.forEach((key, value) {
+        transactionList.add(Map<String, dynamic>.from(value));
+      });
+
+      setState(() {
+        transactions = transactionList;
+        filteredTransactions = transactionList; // Initialize filtered list
+      });
+    }
+  }
+
+  void applyFilters() {
+    setState(() {
+      filteredTransactions = transactions.where((transaction) {
+        // Filter by date range
+        int transactionTime = transaction["current_time"] ?? 0;
+        DateTime transactionDate = DateTime.fromMillisecondsSinceEpoch(transactionTime);
+        bool isWithinDateRange = transactionDate.isAfter(firstDate) && transactionDate.isBefore(lastDate);
+
+        // Filter by transaction type (case-insensitive comparison)
+        bool matchesType = selected_transaction == "All Transactions" ||
+            transaction["type"]?.toLowerCase() == selected_transaction?.toLowerCase();
+
+        return isWithinDateRange && matchesType;
+      }).toList();
+    });
+  }
+
+  void _select_firstDate(BuildContext context) async {
+    DateTime? picked = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null) {
+      setState(() {
+        firstDate = picked;
+      });
+      applyFilters(); // Apply filters after selecting the date
+    }
+  }
+
+  void _select_lastDate(BuildContext context) async {
+    DateTime? picked = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null) {
+      setState(() {
+        lastDate = picked;
+      });
+      applyFilters(); // Apply filters after selecting the date
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        surfaceTintColor: Color(0xFF0078AA),
         backgroundColor: Color(0xFF0078AA),
         title: Text(
           "All Transaction",
-          style: TextStyle(color: Colors.white,fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         iconTheme: IconThemeData(color: Colors.white),
         actions: [
@@ -98,11 +116,7 @@ class All_Transaction extends StatefulWidget {
             width: 25,
             child: Image.asset("Assets/Images/pdf.png"),
           ),
-          Container(
-            height: 30,
-            width: 50,
-            child: Image.asset("Assets/Images/xls.png"),
-          ),
+          SizedBox(width: 10,),
         ],
       ),
       body: Container(
@@ -118,40 +132,6 @@ class All_Transaction extends StatefulWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  DropdownButton<String>(
-                    value: selected_timeDuration,
-                    hint: Text(
-                      'This month',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    icon: Icon(
-                      Icons.arrow_drop_down,
-                      size: 16,
-                    ),
-                    onChanged: (String? newValue) {
-                      setState(() {
-                        selected_timeDuration = newValue;
-                      });
-                    },
-                    items: time_duration_option
-                        .map<DropdownMenuItem<String>>((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(
-                          value,
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      );
-                    }).toList(),
-                    underline: Container(),
-                  ),
-                  Container(
-                    height: 20,
-                    child: VerticalDivider(
-                      thickness: 1,
-                      color: Colors.grey,
-                    ),
-                  ),
                   Icon(
                     Icons.calendar_month,
                     color: Colors.blue,
@@ -197,6 +177,7 @@ class All_Transaction extends StatefulWidget {
                     setState(() {
                       selected_transaction = newValue;
                     });
+                    applyFilters(); // Apply filters after selecting transaction type
                   },
                   items: Item_Transaction.map<DropdownMenuItem<String>>((String value) {
                     return DropdownMenuItem<String>(
@@ -211,107 +192,91 @@ class All_Transaction extends StatefulWidget {
                 ),
               ),
               Divider(),
-              Row(
-                children: [
-                  Text("Party Name",style: TextStyle(fontSize: 12,color: Colors.blueAccent),),
-                  Expanded(
-                    child: TextField(
-                      controller: TextEditingController(
-                        text: selected_party,
-                      ),
-                      style: TextStyle(fontSize: 12), // Font size for TextField input
-                      decoration: InputDecoration(
-                        suffixIcon: DropdownButton<String>(
-                          icon: Icon(Icons.arrow_drop_down),
-                          underline: Container(),
-                          onChanged: (value) {
-                            setState(() {
-                              filtered_Party = Item_party
-                                  .where((item) =>
-                                  item.toLowerCase().contains(value?.toLowerCase() ?? ''))
-                                  .toList();
-                              selected_party = value!;
-                            });
-                          },
-                          items: Item_party.map<DropdownMenuItem<String>>((String value) {
-                            return DropdownMenuItem<String>(
-                              value: value,
-                              child: Text(
-                                value,
-                                style: TextStyle(
-                                  fontSize: 12, // Font size for dropdown items
-                                  color: Colors.black,
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                ],
-              ),
-              Divider(),
               Expanded(
-                child: ListView.builder(
-                    itemBuilder: (context,index){
-                      return Container(
-                        padding: EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.5),
-                              spreadRadius: 1,
-                              blurRadius: 1,
-                              offset: Offset(1, 1),
-                            ),
-                          ]
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: Align(
-                                alignment: Alignment.topLeft,
-                                child: Column(
-                                 children: [
-                                   Align(alignment: Alignment.topLeft,child: Text("Mohit",style: TextStyle(fontSize: 12,color: Colors.black),)),
-                                   Align(alignment: Alignment.topLeft,child: Text("24/01/2025",style: TextStyle(fontSize: 12,color: Colors.grey),)),
-                                 ],
-                                ),
+                child: filteredTransactions.isEmpty
+                    ? Center(
+                  child: Text(
+                    "No Transactions Found",
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                )
+                    : ListView.builder(
+                  itemCount: filteredTransactions.length,
+                  itemBuilder: (context, index) {
+                    var transaction = filteredTransactions[index];
+                    return Container(
+                      padding: EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.5),
+                            spreadRadius: 1,
+                            blurRadius: 1,
+                            offset: Offset(1, 1),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: Align(
+                              alignment: Alignment.topLeft,
+                              child: Column(
+                                children: [
+                                  Align(
+                                    alignment: Alignment.topLeft,
+                                    child: Text(
+                                      transaction["customer"] ?? "N/A",
+                                      style: TextStyle(fontSize: 12, color: Colors.black),
+                                    ),
+                                  ),
+                                  Align(
+                                    alignment: Alignment.topLeft,
+                                    child: Text(
+                                      transaction["date"] ?? "N/A",
+                                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            Expanded(
-                              flex: 1,
-                                child: Align(
-                                    alignment:Alignment.topCenter,
-                                    child: Text("Sale 1",style: TextStyle(fontSize: 12,color: Colors.black),)
-                                ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Align(
-                                alignment: Alignment.topRight,
-                                child: Column(
-                                  children: [
-                                    Text("Total : ₹100",style: TextStyle(fontSize: 12,color: Colors.black),),
-                                    Text("Balance : ₹50",style: TextStyle(fontSize: 12,color: Colors.grey),),
-                                  ],
-                                ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Align(
+                              alignment: Alignment.topCenter,
+                              child: Text(
+                                transaction["type"] ?? "N/A",
+                                style: TextStyle(fontSize: 12, color: Colors.black),
                               ),
                             ),
-                          ],
-                        ),
-                      );
-                    },
-                  itemCount: 1,
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Align(
+                              alignment: Alignment.topRight,
+                              child: Column(
+                                children: [
+                                  Text(
+                                    "Total : ₹${transaction["total_answer"] ?? "0"}",
+                                    style: TextStyle(fontSize: 12, color: Colors.black),
+                                  ),
+                                  Text(
+                                    "Balance : ₹${transaction["balance_due"] ?? "0"}",
+                                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
             ],

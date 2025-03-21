@@ -593,16 +593,14 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
   }
 }
 var iconOf_moreOption = [
-  FlutterRemix.book_open_line,
+  Remix.bank_line,
   FlutterRemix.sticky_note_line,
   FlutterRemix.arrow_up_down_line,
-  Remix.bank_line,
 ];
 var labelOf_moreOption = [
-  "Day Book",
+  "Bank Account",
   "All Txns Report",
   "Profit & Loss",
-  "Bank Account"
 ];
 void ShowAll(BuildContext context)
 {
@@ -612,7 +610,7 @@ void ShowAll(BuildContext context)
     builder: (BuildContext context) {
       return Container(
         color: Colors.white,
-        height: MediaQuery.of(context).size.height * 0.30,
+        height: MediaQuery.of(context).size.height * 0.20,
         child: Padding(
             padding: const EdgeInsets.all(8.0),
             child: Padding(
@@ -651,16 +649,13 @@ void ShowAll(BuildContext context)
                       return InkWell(
                         onTap: (){
                           if(index==0){
-                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>Day_Book()));
+                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>Add_Bank_Account()));
                           }
                           if(index==1){
                             Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>All_Transaction()));
                           }
                           if(index==2){
                             Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>Profit_and_loss()));
-                          }
-                          if(index==3){
-                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>Add_Bank_Account()));
                           }
                         },
                         child: QuickLink(

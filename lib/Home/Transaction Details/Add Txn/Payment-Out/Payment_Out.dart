@@ -415,6 +415,7 @@ class PaymentOut extends State<Payment_Out> {
                                           onChanged: (value) {
                                             setState(() {
                                               paid_money.text = value;
+                                              balance_due.text = value;
                                             });
                                           },
                                           keyboardType: TextInputType.number,
@@ -454,13 +455,9 @@ class PaymentOut extends State<Payment_Out> {
                                       child: Align(
                                         alignment: Alignment.centerRight,
                                         child:TextField(
-                                          controller: paid_money,
+                                          readOnly: true,
+                                          controller: balance_due,
                                           style: TextStyle(color: Colors.green),
-                                          onChanged: (value) {
-                                            setState(() {
-                                              paid_money.text = value;
-                                            });
-                                          },
                                           keyboardType: TextInputType.number,
                                           textAlign: TextAlign.end,
                                           decoration: InputDecoration(

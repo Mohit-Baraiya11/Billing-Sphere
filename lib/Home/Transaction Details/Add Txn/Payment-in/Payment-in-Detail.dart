@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_remix/flutter_remix.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -427,6 +428,10 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.grey.shade400,
+          statusBarIconBrightness: Brightness.light, // Light icons (for dark backgrounds)
+        ),
         surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
         title: Text('Payment - In'),

@@ -6,6 +6,7 @@ import 'package:google_signup/Compony%20Detail%20Page/Business_Details.dart';
 import 'package:google_signup/Dashboard/Dashboard.dart';
 import 'package:google_signup/Items/Items_show.dart';
 import 'package:google_signup/Notification/Notification.dart';
+import 'package:remixicon/remixicon.dart';
 
 import 'Home/Home.dart';
 import 'Home/Prefered_underline_appbar.dart';
@@ -68,7 +69,7 @@ class _MyHomePageState extends State<MyHomePage> {
             items: const [
               BottomNavigationBarItem(icon: Icon(FlutterRemix.home_8_line), label: 'Home'),
               BottomNavigationBarItem(icon: Icon(FlutterRemix.dashboard_line), label: 'Dashboard'),
-              BottomNavigationBarItem(icon: Icon(FlutterRemix.add_box_fill), label: 'Items'),
+              BottomNavigationBarItem(icon: Icon(Remix.box_3_line), label: 'Items'),
               BottomNavigationBarItem(icon: Icon(FlutterRemix.profile_line), label: 'Menu'),
             ],
           ),

@@ -1,9 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_remix/flutter_remix.dart';
 import 'package:google_signup/Home/Prefered_underline_appbar.dart';
-
-import 'BottomNavbar_save_buttons.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class Sale_Report extends StatefulWidget {
   @override
@@ -12,8 +13,70 @@ class Sale_Report extends StatefulWidget {
 
 class SaleReport extends State<Sale_Report> {
   var time = DateTime.now();
-
   String _selectedDuration = 'Select Duration';
+  List<Map<String, dynamic>> sales = [];
+  int totalSales = 0;
+  double totalSaleAmount = 0.0;
+  double totalBalanceDue = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchSales();
+  }
+
+  void fetchSales({DateTime? selectedDate}) async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    String userId = user.uid;
+    DatabaseReference ref = FirebaseDatabase.instance.ref("users/$userId/Transactions");
+
+    DatabaseEvent event = await ref.once();
+    if (event.snapshot.value != null) {
+      Map<dynamic, dynamic> transactions = event.snapshot.value as Map<dynamic, dynamic>;
+      List<Map<String, dynamic>> salesList = [];
+
+      transactions.forEach((key, value) {
+        if (value["type"] == "sale") {
+          // Convert Firebase timestamp to DateTime
+          int currentTime = value["current_time"] ?? 0;
+          DateTime saleDate = DateTime.fromMillisecondsSinceEpoch(currentTime);
+
+          // Apply date filter if a date is selected
+          if (selectedDate == null ||
+              (saleDate.year == selectedDate.year &&
+                  saleDate.month == selectedDate.month &&
+                  saleDate.day == selectedDate.day)) {
+            salesList.add(Map<String, dynamic>.from(value));
+          }
+        }
+      });
+
+      // Sort sales by current_time (newest first)
+      salesList.sort((a, b) {
+        int timeA = a["current_time"] ?? 0;
+        int timeB = b["current_time"] ?? 0;
+        return timeB.compareTo(timeA); // Sort in descending order
+      });
+
+      setState(() {
+        sales = salesList;
+        totalSales = salesList.length;
+
+        // Initialize totals to 0
+        totalSaleAmount = 0.0;
+        totalBalanceDue = 0.0;
+
+        // Loop through each sale and add to the totals
+        for (var item in salesList) {
+          totalSaleAmount += double.parse(item["received"] ?? "0");
+          totalBalanceDue += double.parse(item["balance_due"] ?? "0");
+        }
+      });
+    }
+  }
+
   void _showTimeDurationBottomSheet() {
     showModalBottomSheet(
       backgroundColor: Colors.white,
@@ -66,15 +129,17 @@ class SaleReport extends State<Sale_Report> {
     );
   }
 
-  Color? blue_50 = Colors.blue[50];
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.grey.shade400,
+          statusBarIconBrightness: Brightness.light,
+        ),
+        surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
-        elevation: 0,
         bottom: Prefered_underline_appbar(),
-        foregroundColor: Colors.black,
         title: Text('Sale Report', style: TextStyle(color: Colors.black)),
         actions: [
           Container(
@@ -82,153 +147,72 @@ class SaleReport extends State<Sale_Report> {
             width: 25,
             child: Image.asset("Assets/Images/pdf.png"),
           ),
-          Container(
-            height: 30,
-            width: 50,
-            child: Image.asset("Assets/Images/xls.png"),
-          ),
+          SizedBox(width: 10,),
         ],
       ),
       body: Container(
         color: Colors.white,
         child: Column(
           children: [
-            Expanded(
-              child: SingleChildScrollView(
-                physics: BouncingScrollPhysics(),
-                child:  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8.0,right: 8.0),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.only(left: 8.0, right: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      GestureDetector(
+                        onTap: _showTimeDurationBottomSheet,
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            GestureDetector(
-                                onTap: _showTimeDurationBottomSheet,
-                                child: Row(
-                                  children: [
-                                    Text(_selectedDuration,),
-                                    SizedBox(width: 10,),
-                                    Icon(Icons.arrow_drop_down),
-                                  ],
-                                ),
-                                ),
-                            VerticalDivider(thickness: 1,),
-                            Row(
-                              children: [
-                                Icon(FlutterRemix.calendar_2_line,size: 16,color: Colors.blue,),
-                                SizedBox(width: 10,),
-                                Text("Date", style: TextStyle(fontSize: 16)),
-                                TextButton(
-                                  onPressed: () async {
-                                    DateTime? selectedDate = await showDatePicker(
-                                      context: context,
-                                      initialDate: DateTime.now(),
-                                      firstDate: DateTime(2000),
-                                      lastDate: DateTime(2100),
-                                    );
-                                    if (selectedDate != null) {
-                                      setState(() {
-                                        time = selectedDate;
-                                      });
-                                    }
-                                  },
-                                  child: Text(
-                                    "${time.day}/${time.month}/${time.year}",
-                                    style: TextStyle(fontSize: 16,),
-                                  ),
-                                ),
-                              ],
-                            )
+                            Text(_selectedDuration),
+                            SizedBox(width: 10,),
+                            Icon(Icons.arrow_drop_down),
                           ],
                         ),
                       ),
-                      Divider(color: Colors.grey,thickness: 0.8,),
-
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8.0,right: 8.0),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                    child: Text("Filters Applied :")
-                                ),
-                                SizedBox(
-                                  height: 30,
-                                  child: TextButton(
-                                      style: TextButton.styleFrom(
-                                        side: BorderSide(
-                                          color: Colors.grey,
-                                          width: 1,
-                                        ),
-                                      ),
-                                      onPressed: (){},
-                                      child: Row(
-                                        children: [
-                                          Icon(FlutterRemix.filter_2_line,size: 15,color: Colors.blue,),
-                                          Text("Filters")
-                                        ],
-                                      )),
-                                )
-                              ],
+                      VerticalDivider(thickness: 1,),
+                      Row(
+                        children: [
+                          Icon(FlutterRemix.calendar_2_line, size: 16, color: Colors.blue,),
+                          SizedBox(width: 10,),
+                          Text("Date", style: TextStyle(fontSize: 16)),
+                          TextButton(
+                            onPressed: () async {
+                              DateTime? selectedDate = await showDatePicker(
+                                context: context,
+                                initialDate: DateTime.now(),
+                                firstDate: DateTime(2000),
+                                lastDate: DateTime(2100),
+                              );
+                              if (selectedDate != null) {
+                                setState(() {
+                                  time = selectedDate;
+                                });
+                                fetchSales(selectedDate: selectedDate); // Apply date filter
+                              }
+                            },
+                            child: Text(
+                              "${time.day}/${time.month}/${time.year}",
+                              style: TextStyle(fontSize: 16,),
                             ),
-                            Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Row(
-                                children: [
-                                  SizedBox(
-                                    height: 30,
-                                    child: TextButton(
-                                        style: TextButton.styleFrom(
-                                          side: BorderSide(
-                                            color: Colors.grey,
-                                            width: 1,
-                                          ),
-                                          backgroundColor: Color(0xFFE8E8E8FF),
-                                        ),
-                                        onPressed: (){},
-                                        child: Center(child: Text("Txns Type - Sale & Cr. Note",style: TextStyle(fontSize: 11,color: Colors.black),))
-                                    ),
-                                  ),
-                                  SizedBox(
-                                    height: 30,
-                                    child: TextButton(
-                                        style: TextButton.styleFrom(
-                                          side: BorderSide(
-                                            color: Colors.grey,
-                                            width: 1,
-                                          ),
-                                          backgroundColor: Color(0xFFE8E8E8FF),
-                                        ),
-                                        onPressed: (){},
-                                        child: Center(child: Text("party - All party",style: TextStyle(fontSize: 11,color: Colors.black),))
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                          ],
-                        ),
-                      ),
-
-
+                          ),
+                        ],
+                      )
                     ],
                   ),
                 ),
-              ),
-
+              ],
+            ),
             Expanded(
-              flex: 4,
               child: Container(
                 height: double.infinity,
                 decoration: BoxDecoration(
                     gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.center,
-                        colors: [Colors.blue.shade100,Colors.blue.shade50]
+                        colors: [Colors.blue.shade200, Colors.blue.shade50]
                     )
                 ),
                 padding: EdgeInsets.all(8.0),
@@ -249,7 +233,7 @@ class SaleReport extends State<Sale_Report> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text("No of Txns"),
-                                  Text("4"),
+                                  Text("$totalSales"),
                                 ],
                               ),
                             ),
@@ -266,7 +250,7 @@ class SaleReport extends State<Sale_Report> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text("Total Sale"),
-                                  Text("₹50000"),
+                                  Text("₹$totalSaleAmount"),
                                 ],
                               ),
                             ),
@@ -284,7 +268,7 @@ class SaleReport extends State<Sale_Report> {
                                 children: [
                                   Text("Balance Due"),
                                   Text(
-                                    "₹ 4750",
+                                    "₹$totalBalanceDue",
                                     style: TextStyle(color: Colors.greenAccent),
                                   ),
                                 ],
@@ -294,111 +278,124 @@ class SaleReport extends State<Sale_Report> {
                         ],
                       ),
                       SizedBox(height: 10),
-                      ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: 1,
-                        itemBuilder: (context, index) {
-                          return Container(
-                            margin: EdgeInsets.only(bottom: 10),
-                            padding: EdgeInsets.all(15),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withOpacity(0.2),
-                                  spreadRadius: 2,
-                                  blurRadius: 5,
-                                  offset: Offset(0, 3),
-                                ),
-                              ],
+                      Expanded(
+                        child: sales.isEmpty
+                            ? Center(
+                          child: Text(
+                            "No Sale Data Found",
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey,
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      "Mohit",
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w400,
+                          ),
+                        )
+                            : ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: sales.length,
+                          itemBuilder: (context, index) {
+                            var sale = sales[index];
+                            return Container(
+                              margin: EdgeInsets.only(bottom: 10),
+                              padding: EdgeInsets.all(15),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.grey.withOpacity(0.2),
+                                    spreadRadius: 2,
+                                    blurRadius: 5,
+                                    offset: Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        sale["customer"] ?? "N/A",
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w400,
+                                        ),
                                       ),
-                                    ),
-                                    Column(
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          Text(
+                                            "SALE ${index + 1}",
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                          Text(
+                                            sale["date"] ?? "N/A",
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 8),
+                                  SizedBox(
+                                    width: MediaQuery.of(context).size.width*0.4,
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text(
-                                          "SALE 1",
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey,
-                                          ),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              "Amount",
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                            SizedBox(height: 4),
+                                            Text(
+                                              "₹ ${sale["total_amount"] ?? "0.00"}",
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        Text(
-                                          "21 Jan, 25",
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey,
-                                          ),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                          children: [
+                                            Text(
+                                              "Balance",
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey,
+                                              ),
+                                            ),
+                                            SizedBox(height: 4),
+                                            Text(
+                                              "₹ ${sale["balance_due"] ?? "0.00"}",
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ),
-                                  ],
-                                ),
-                                SizedBox(height: 8),
-                                SizedBox(height: 12),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          "Amount",
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                        SizedBox(height: 4),
-                                        Text(
-                                          "₹ 100.00",
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        Text(
-                                          "Balance",
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                        SizedBox(height: 4),
-                                        Text(
-                                          "₹ 50.00",
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                       ),
-              
                     ],
                   ),
                 ),
@@ -410,4 +407,3 @@ class SaleReport extends State<Sale_Report> {
     );
   }
 }
-

@@ -1,10 +1,14 @@
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:dotted_border/dotted_border.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_remix/flutter_remix.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:remixicon/remixicon.dart';
 
 import '../../../BottomNavbar_save_buttons.dart';
@@ -168,26 +172,49 @@ class _Expenses extends State<Expenses> {
   TextEditingController description_controller = TextEditingController();
   TextEditingController expense_category_controller = TextEditingController();
 
-  int? image;
-  Future<void> savePaymentInData(String userId) async {
-    DatabaseReference paymentInRef = FirebaseDatabase.instance.ref("users/$userId/Transactions/");
+  String? image;
+  Future<void> uploadImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      File imageFile = File(pickedFile.path);
+      List<int> imageBytes = await imageFile.readAsBytes();
+      String base64Image = base64Encode(imageBytes);
+      if(base64Image!=null){
+        setState(() {
+          image = base64Image;
+        });
+      }
+    }
+  }
+
+
+  Future<void> saveExpenseData(String userId) async {
+    DatabaseReference expenseRef = FirebaseDatabase.instance.ref("users/$userId/Transactions/");
+    DatabaseReference cashRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Cash/Cash_transaction");
+    DatabaseReference bankAccountsRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Bank");
 
     // Generate a unique transaction ID
-    String transactionId = paymentInRef.push().key!;
+    String transactionId = expenseRef.push().key!;
 
-    // Prepare payment data
-    Map<String, dynamic> paymentData = {
+    // Convert total amount to double
+    double totalAmount = double.tryParse(total_price.text) ?? 0.0;
+
+    // Prepare expense data
+    Map<String, dynamic> expenseData = {
+      "transactionId": transactionId,
       "type": "Expenses",
-      "invoice_no": invoice_no,
+      "invoice_no": invoice_no ?? "0",
       "date": "${time.day}/${time.month}/${time.year}",
-      "expenses_category": expense_category_controller.text ?? "",
-      "total_amount":total_price.text,
+      "expenses_category": expense_category_controller.text.trim(),
+      "total_amount": totalAmount.toString(),
       "paymentType": selectedPaymentType,
-      "description": description_controller.text,
+      "description": description_controller.text.trim(),
       "Image": image ?? "Null",
     };
 
-    // Filter out rows where itemName is empty, then convert tableRows to a list of items
+    // Filter out empty items and create item list
     List<Map<String, dynamic>> itemsList = tableRows
         .where((row) => row['itemName'].toString().trim().isNotEmpty)
         .map((row) => {
@@ -198,23 +225,100 @@ class _Expenses extends State<Expenses> {
     })
         .toList();
 
-    // Store the main payment data under the transaction ID
-    await paymentInRef.child(transactionId).set(paymentData);
+    // Save the main expense data
+    await expenseRef.child(transactionId).set(expenseData);
 
-    // Store the filtered items under the transaction ID
-    await paymentInRef.child(transactionId).child("items").set(itemsList);
+    // Save the items list under the transaction
+    await expenseRef.child(transactionId).child("items").set(itemsList);
+
+    // Check if Bank_accounts node exists, if not, create it
+    DatabaseReference bankAccountsRootRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts");
+    DatabaseEvent bankAccountsEvent = await bankAccountsRootRef.once();
+    if (bankAccountsEvent.snapshot.value == null) {
+      await bankAccountsRootRef.set({
+        "Cash": {
+          "Cash_transaction": {
+            "total_balance": "0"
+          }
+        },
+        "Bank": {}
+      });
+    }
+
+    // Deduct the amount from selected payment type
+    if (selectedPaymentType == "Cash") {
+      // Ensure Cash_transaction node exists
+      DatabaseEvent cashEvent = await cashRef.once();
+      if (cashEvent.snapshot.value == null) {
+        await cashRef.set({"total_balance": "0"});
+      }
+
+      // Deduct from Cash balance
+      DatabaseEvent updatedCashEvent = await cashRef.once();
+      if (updatedCashEvent.snapshot.value != null) {
+        Map<dynamic, dynamic> cashData = updatedCashEvent.snapshot.value as Map<dynamic, dynamic>;
+        double currentCash = double.tryParse(cashData["total_balance"].toString()) ?? 0.0;
+        double updatedCash = currentCash - totalAmount;
+        await cashRef.update({"total_balance": updatedCash.toString()});
+
+        // Save expense transaction inside Cash Transactions
+        await cashRef.child("transactions").child(transactionId).set({
+          "transactionId": transactionId,
+          "type": "Expenses",
+          "amount": "-$totalAmount",
+          "date": "${time.day}/${time.month}/${time.year}",
+          "category": expense_category_controller.text.trim(),
+          "description": description_controller.text.trim(),
+          "paymentType": "Cash",
+        });
+      }
+    } else {
+      // Ensure selected Bank node exists
+      DatabaseReference selectedBankRef = bankAccountsRef.child(selectedPaymentType!);
+      DatabaseEvent bankEvent = await selectedBankRef.once();
+      if (bankEvent.snapshot.value == null) {
+        await selectedBankRef.set({"total_balance": "0"});
+      }
+
+      // Deduct from selected Bank account
+      DatabaseEvent updatedBankEvent = await selectedBankRef.once();
+      if (updatedBankEvent.snapshot.value != null) {
+        Map<dynamic, dynamic> bankData = updatedBankEvent.snapshot.value as Map<dynamic, dynamic>;
+        double currentBankBalance = double.tryParse(bankData["total_balance"].toString()) ?? 0.0;
+        double updatedBankBalance = currentBankBalance - totalAmount;
+        await selectedBankRef.update({"total_balance": updatedBankBalance.toString()});
+
+        // Save expense transaction inside Bank Transactions
+        await selectedBankRef.child("transactions").child(transactionId).set({
+          "transactionId": transactionId,
+          "type": "Expenses",
+          "amount": "-$totalAmount",
+          "date": "${time.day}/${time.month}/${time.year}",
+          "category": expense_category_controller.text.trim(),
+          "description": description_controller.text.trim(),
+          "paymentType": "Bank",
+        });
+      }
+    }
 
     // Show success message
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Expenses Data & Items Saved Successfully!')),
+      SnackBar(content: Text('Expense Data & Items Saved Successfully!')),
     );
+    Navigator.pop(context);
   }
+
 
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.grey.shade400,
+          statusBarIconBrightness: Brightness.light,
+        ),
+        surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
         title: Text('Expense'),
         bottom: Prefered_underline_appbar(),
@@ -238,7 +342,7 @@ class _Expenses extends State<Expenses> {
         onRightButtonPressed: () async {
           User? user = FirebaseAuth.instance.currentUser;
           if (user != null) {
-            await savePaymentInData(user.uid);
+            await saveExpenseData(user.uid);
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('User not logged in!')),
@@ -267,7 +371,11 @@ class _Expenses extends State<Expenses> {
                               Expanded(
                                 child: InkWell(
                                   onTap: () {
-                                    showInvoiceSheet(context);
+                                    showInvoiceSheet(context, (newInvoice) {
+                                      setState(() {
+                                        invoice_no = newInvoice;
+                                      });
+                                    });
                                   },
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -299,8 +407,11 @@ class _Expenses extends State<Expenses> {
                               Expanded(
                                 child: InkWell(
                                   onTap: () {
-                                    showInvoiceSheet(context);
-                                  },
+                                    showInvoiceSheet(context, (newInvoice) {
+                                      setState(() {
+                                        invoice_no = newInvoice;
+                                      });
+                                    });                                       },
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
@@ -665,10 +776,6 @@ class _Expenses extends State<Expenses> {
                         ),
                         ),
 
-
-
-
-
                       Padding(
                         padding: const EdgeInsets.only(left: 16.0,right: 16.0,top: 10,bottom: 10),
                         child: Row(
@@ -712,6 +819,7 @@ class _Expenses extends State<Expenses> {
 
                                   // TextField
                                   TextField(
+                                    readOnly: true,
                                     controller: total_price,
                                     onChanged: (value) {
                                       setState(() {
@@ -732,7 +840,7 @@ class _Expenses extends State<Expenses> {
                         ),
                       ),
                       if (_calculateTotal() != null)
-                        Container(
+                      Container(
                           padding: EdgeInsets.all(16),
                           color: Colors.white,
                           child: Column(
@@ -750,63 +858,7 @@ class _Expenses extends State<Expenses> {
                                             alignment: Alignment.topRight,
                                             child: GestureDetector(
                                               onTap: () {
-                                                showModalBottomSheet(
-                                                  backgroundColor: Colors.white,
-                                                  context: context,
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                                                  ),
-                                                  builder: (context) {
-                                                    return StatefulBuilder(
-                                                      builder: (context, setStateModal) { // Use setStateModal for local state changes
-                                                        return Padding(
-                                                          padding: const EdgeInsets.all(16.0),
-                                                          child: Column(
-                                                            mainAxisSize: MainAxisSize.min,
-                                                            children: [
-                                                              Text("Payment Type",style: TextStyle(fontSize: 22),),
-                                                              ListTile(
-                                                                leading: Icon(Icons.money, color: Colors.green),
-                                                                title: Text("Cash"),
-                                                                onTap: () {
-                                                                  setState(() {
-                                                                    selectedPaymentType = "Cash";
-                                                                  });
-                                                                  Navigator.pop(context);
-                                                                },
-                                                                tileColor: selectedPaymentType == "Cash"
-                                                                    ? Colors.grey[200]
-                                                                    : null,
-                                                              ),
-                                                              ListTile(
-                                                                leading: Icon(Icons.receipt_long, color: Colors.yellow),
-                                                                title: Text("Cheque"),
-                                                                onTap: () {
-                                                                  setState(() {
-                                                                    selectedPaymentType = "Cheque";
-                                                                  });
-                                                                  Navigator.pop(context);
-                                                                },
-                                                                tileColor: selectedPaymentType == "Cheque"
-                                                                    ? Colors.grey[200]
-                                                                    : null,
-                                                              ),
-                                                              Divider(),
-                                                              ListTile(
-                                                                leading: Icon(Icons.add, color: Colors.blue),
-                                                                title: Text("Add Bank A/c"),
-                                                                onTap: () {
-                                                                  // Handle "Add Bank A/c" logic
-                                                                  Navigator.pop(context);
-                                                                },
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        );
-                                                      },
-                                                    );
-                                                  },
-                                                );
+                                                select_payment_method(context);
                                               },
                                               child: Row(
                                                 mainAxisSize: MainAxisSize.min,
@@ -852,7 +904,7 @@ class _Expenses extends State<Expenses> {
                                       Expanded(
                                         child: TextField(
                                           controller:description_controller,
-                                          onChanged: (value){
+                                          onChanged: (String value){
                                             setState(() {
                                               description_controller.text = value;
                                             });
@@ -879,35 +931,7 @@ class _Expenses extends State<Expenses> {
                                       SizedBox(width: 10.0),
                                       GestureDetector(
                                         onTap:(){
-                                          showDialog(
-                                            context: context,
-                                            builder: (BuildContext context) {
-                                              return AlertDialog(
-                                                backgroundColor: Colors.white,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.zero,
-                                                ),
-                                                content: Column(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    ListTile(
-                                                      title: Text("Camera"),
-                                                      onTap: () {
-                                                        Navigator.pop(context); // Close the dialog
-                                                      },
-                                                    ),
-                                                    Divider(),
-                                                    ListTile(
-                                                      title: Text("Gallery"),
-                                                      onTap: () {
-                                                        Navigator.pop(context); // Close the dialog
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-                                            },
-                                          );
+                                          uploadImage();
                                         }, // Show the dialog on tap
                                         child: Container(
                                           width: 75,
@@ -917,7 +941,7 @@ class _Expenses extends State<Expenses> {
                                             borderRadius: BorderRadius.circular(8.0),
                                             color: Colors.grey[100],
                                           ),
-                                          child: Icon(FlutterRemix.camera_line),
+                                          child: image!=null?Image.memory(base64Decode(image!)):Icon(Remix.folder_image_line),
                                         ),
                                       ),
                                     ],
@@ -927,6 +951,7 @@ class _Expenses extends State<Expenses> {
                             ],
                           ),
                         ),
+                      SizedBox(height: 15,),
 
                     ],
                   ),
@@ -938,270 +963,227 @@ class _Expenses extends State<Expenses> {
       ),
     );
   }
-}
-List<String> PrefixName = ["None"];
-List<int> PrefixNumber = [0];
+  void select_payment_method(BuildContext context) {
+    // Fetch bank accounts from Firebase
+    User? user = FirebaseAuth.instance.currentUser;
 
-int _selectedButton = 0;
-String? newPrefix;
+    if (user == null) {
+      print("No user logged in");
+      return;
+    }
+    String userId = user.uid;
 
-void showInvoiceSheet(BuildContext context) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(
-        top: Radius.circular(20),
+    DatabaseReference ref = FirebaseDatabase.instance
+        .ref()
+        .child('users')
+        .child('$userId')
+        .child('Bank_accounts')
+        .child('Bank');
+
+    showModalBottomSheet(
+      backgroundColor: Colors.white,
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
       ),
-    ),
-    backgroundColor: Colors.white,
-    builder: (BuildContext context) {
-      return StatefulBuilder(
-        builder: (context, setState) {
-          return Padding(
-            padding: EdgeInsets.only(
-              left: 2.0,
-              right: 2.0,
-              top: 10.0,
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: SingleChildScrollView(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(20),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Payment Type", style: TextStyle(fontSize: 22)),
+                      IconButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                        },
+                        icon: Icon(Remix.close_line),
+                      ),
+                    ],
+                  ),
+                  Divider(color: Colors.grey.shade200, thickness: 1),
+                  ListTile(
+                    leading: Icon(Icons.money, color: Colors.green),
+                    title: Text("Cash"),
+                    onTap: () {
+                      setState(() {
+                        selectedPaymentType = "Cash";
+                      });
+                      Navigator.pop(context);
+                    },
+                    tileColor: selectedPaymentType == "Cash"
+                        ? Colors.grey[200]
+                        : null,
+                  ),
+                  // Fetch and display bank accounts
+                  FutureBuilder(
+                    future: ref.once(),
+                    builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return CircularProgressIndicator();
+                      } else if (snapshot.hasError) {
+                        return Text('Error: ${snapshot.error}');
+                      } else if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+                        return Text('No bank accounts found');
+                      } else {
+                        // Parse the bank accounts data
+                        Map<dynamic, dynamic> banks = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+                        return Column(
+                          children: banks.entries.map((entry) {
+                            var bank = entry.value;
+                            return ListTile(
+                              leading: Icon(Icons.account_balance, color: Colors.blue),
+                              title: Text(bank['bank_name']),
+                              subtitle: Text("Account Holder: ${bank['holder_name']}"),
+                              onTap: () {
+                                setState(() {
+                                  selectedPaymentType = bank['bank_name'];
+                                });
+                                Navigator.pop(context);
+                              },
+                              tileColor: selectedPaymentType == bank['bank_name']
+                                  ? Colors.grey[200]
+                                  : null,
+                            );
+                          }).toList(),
+                        );
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.add, color: Colors.blue),
+                    title: Text("Add Bank A/c"),
+                    onTap: () {
+                      // Handle "Add Bank A/c" logic
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+  void showInvoiceSheet(BuildContext context, Function(int) updateInvoice) {
+    int? localInvoiceNo = invoice_no; // Temporary variable
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      backgroundColor: Colors.white,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 2.0,
+                right: 2.0,
+                top: 10.0,
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: SingleChildScrollView(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(10.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                "Change Receipt No.",
+                                style: TextStyle(fontSize: 20),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: Icon(Icons.cancel, size: 30),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.topLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 10.0),
+                          child: Text(
+                            "Invoice Prefix",
+                            style: TextStyle(fontSize: 15),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: TextField(
+                          onChanged: (val) {
+                            setState(() {
+                              localInvoiceNo = int.tryParse(val) ?? 0;
+                            });
+                          },
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: "Invoice No",
+                            hintText: "Enter Invoice No",
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.0),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.0),
+                              borderSide: BorderSide(color: Colors.blue, width: 2.0),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.0),
+                              borderSide: BorderSide(color: Colors.grey, width: 1.0),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              backgroundColor: Colors.blueAccent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            ),
+                            onPressed: () {
+                              updateInvoice(localInvoiceNo!);
+                              Navigator.pop(context);
+                            },
+                            child: Text("SAVE"),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(10.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: Text(
-                              "Change Receipt No.",
-                              style: TextStyle(fontSize: 20),
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: Icon(
-                              Icons.cancel,
-                              size: 30,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Align(
-                      alignment: Alignment.topLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 10.0),
-                        child: Text(
-                          "Invoice Prefix",
-                          style: TextStyle(fontSize: 15),
-                        ),
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SizedBox(
-                            height: 50,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: PrefixName.length,
-                              itemBuilder: (context, index) {
-                                return Padding(
-                                  padding:
-                                  const EdgeInsets.symmetric(horizontal: 4.0),
-                                  child: TextButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _selectedButton = index;
-                                      });
-                                    },
-                                    child: Container(
-                                      padding: EdgeInsets.symmetric(
-                                          horizontal: 16, vertical: 8),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: index == _selectedButton
-                                              ? Colors.redAccent
-                                              : Colors.grey,
-                                        ),
-                                        borderRadius: BorderRadius.circular(20),
-                                        color: index == _selectedButton
-                                            ? Colors.red[50]
-                                            : Colors.transparent,
-                                      ),
-                                      child: Text(
-                                        '${PrefixName[index]}',
-                                        style: TextStyle(
-                                          color: index == _selectedButton
-                                              ? Colors.redAccent
-                                              : Colors.black,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            showDialog(
-                              context: context,
-                              builder: (context) {
-                                return AlertDialog(
-                                  title: Text(
-                                    'Add Prefix',
-                                    style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.zero,
-                                  ),
-                                  backgroundColor: Colors.white,
-                                  content: Padding(
-                                    padding: const EdgeInsets.all(4.0),
-                                    child: SizedBox(
-                                      width: 600,
-                                      child: TextField(
-                                        keyboardType: TextInputType.text,
-                                        decoration: InputDecoration(
-                                          labelText: "Prefix Name",
-                                          hintText: "e.g. INV",
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                            BorderRadius.circular(8.0),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius:
-                                            BorderRadius.circular(8.0),
-                                            borderSide: BorderSide(
-                                                color: Colors.blueAccent,
-                                                width: 2.0),
-                                          ),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderRadius:
-                                            BorderRadius.circular(8.0),
-                                            borderSide: BorderSide(
-                                                color: Colors.grey, width: 1.0),
-                                          ),
-                                        ),
-                                        onChanged: (value) {
-                                          newPrefix = value;
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.pop(context);
-                                      },
-                                      child: Text(
-                                        "Cancel",
-                                        style: TextStyle(color: Colors.blueAccent),
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: () {
-                                        if (newPrefix != null &&
-                                            newPrefix!.isNotEmpty) {
-                                          setState(() {
-                                            PrefixName.add(newPrefix!);
-                                            newPrefix = null;
-                                          });
-                                          Navigator.pop(context);
-                                        }
-                                      },
-                                      child: Text(
-                                        "Save",
-                                        style: TextStyle(color: Colors.blueAccent),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            );
-                          },
-                          child: Container(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey),
-                              borderRadius: BorderRadius.circular(20),
-                              color: Colors.grey[50],
-                            ),
-                            child: Text(
-                              'Add Prefix',
-                              style: TextStyle(color: Colors.black),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: TextField(
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: "Invoice No",
-                          hintText: "Invoice No",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                            borderSide:
-                            BorderSide(color: Colors.blue, width: 2.0),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                            borderSide:
-                            BorderSide(color: Colors.grey, width: 1.0),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            backgroundColor: Colors.blueAccent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 12),
-                          ),
-                          onPressed: () {
-                            // Save logic
-                          },
-                          child: Text("SAVE"),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
-            ),
-          );
-        },
-      );
-    },
-  );
+            );
+          },
+        );
+      },
+    );
+  }
 }
