@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_remix/flutter_remix.dart';
 import 'package:google_signup/Home/Prefered_underline_appbar.dart';
 
@@ -119,6 +120,11 @@ class PartyStatement extends State<Party_Statement> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.grey.shade400,
+          statusBarIconBrightness: Brightness.light, // Light icons (for dark backgrounds)
+        ),
+        surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
         elevation: 0, // Removes shadow
         foregroundColor: Colors.black,
@@ -130,12 +136,8 @@ class PartyStatement extends State<Party_Statement> {
             width: 25,
             child: Image.asset("Assets/Images/pdf.png"),
           ),
-          //xls
-          Container(
-            height: 30,
-            width: 50,
-            child: Image.asset("Assets/Images/xls.png"),
-          ),
+          SizedBox(width: 10,),
+
         ],
       ),
       resizeToAvoidBottomInset: false,
@@ -143,10 +145,7 @@ class PartyStatement extends State<Party_Statement> {
         color: Colors.white,
         child: Column(
           children: [
-            Expanded(
-              child: SingleChildScrollView(
-                physics: BouncingScrollPhysics(),
-                child: Column(
+            Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Padding(
@@ -203,105 +202,25 @@ class PartyStatement extends State<Party_Statement> {
                         ),
                       ),
                       Divider(),
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                    child: Text("Filters Applied :")
-                                ),
-                                SizedBox(
-                                  height: 30,
-                                  child: TextButton(
-                                      style: TextButton.styleFrom(
-                                        side: BorderSide(
-                                          color: Colors.grey,
-                                          width: 1,
-                                        ),
-                                      ),
-                                      onPressed: (){},
-                                      child: Row(
-                                        children: [
-                                          Icon(FlutterRemix.filter_2_line,size: 15,color: Colors.blue,),
-                                          Text("Filters")
-                                        ],
-                                      )),
-                                )
-                              ],
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Row(
-                                children: [
-                                  SizedBox(
-                                    height: 30,
-                                    child: TextButton(
-                                        style: TextButton.styleFrom(
-                                          side: BorderSide(
-                                            color: Colors.grey,
-                                            width: 1,
-                                          ),
-                                          backgroundColor: Color(0xFFE8E8E8FF),
-                                        ),
-                                        onPressed: (){
-                                          ThemeChanged(context);
-                                        },
-                                        child: Center(child: Text("Theme - Acounting View",style: TextStyle(fontSize: 11,color: Colors.black),))
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                          ],
-                        ),
-                      ),
                     ],
                   ),
-                ),
-              ),
+
             Expanded(
-              flex: 4,
               child: Container(
                 height: double.infinity,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.center,
-                    colors: [Colors.blue.shade100, Colors.blue.shade50],
+                    colors: [Colors.blue.shade200, Colors.blue.shade50],
                   ),
                 ),
                 padding: EdgeInsets.all(8.0),
                 child: Column(
                   children: [
-                    Container(
-                      height: 50,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        color: Colors.white,
-                      ),
-                      child: Center(
-                        child: TextField(
-                          decoration: InputDecoration(
-                            prefixIcon: Icon(Icons.search,color: Colors.blue,size: 30,),
-                            suffixIcon: IconButton(
-                                onPressed: (){},
-                                icon: Icon(Icons.close)),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 10),
 
                     Row(
                       children: [
-                        if(selectedTheme=="Vyapar View")
                               Expanded(
                                 child: Container(
                                   decoration: BoxDecoration(
@@ -332,9 +251,7 @@ class PartyStatement extends State<Party_Statement> {
                                   ),
                                 ),
                               ),
-                        if(selectedTheme=="Vyapar View")
                               SizedBox(width: 10),
-                        if(selectedTheme=="Vyapar View")
                                Expanded(
                                 child: Container(
                                   decoration: BoxDecoration(
@@ -365,41 +282,8 @@ class PartyStatement extends State<Party_Statement> {
                                   ),
                                 ),
                               ),
-                        if(selectedTheme=="Vyapar View")
                                SizedBox(width: 10),
 
-                        if(selectedTheme=="Accounting View")
-                          Expanded(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              padding: EdgeInsets.all(8.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Total Debit",
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    "₹ 50.00",
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      color: Colors.black,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 10),
                         Expanded(
                           child: Container(
                             decoration: BoxDecoration(
@@ -531,146 +415,4 @@ class PartyStatement extends State<Party_Statement> {
     );
   }
 
-  String selectedTheme = "Vyapar View";
-
-
-  void ThemeChanged(BuildContext context) {
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-      ),
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setState) {
-            return Container(
-              padding: EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min, // Prevents unnecessary space
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// **Header Section**
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          "Filters",
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () {
-                          Navigator.of(context).pop();
-                        },
-                        child: Icon(Icons.close),
-                      ),
-                    ],
-                  ),
-                  Divider(),
-
-                  /// **Theme Selection in Row**
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: EdgeInsets.only(top: 12.0),
-                        child: Text(
-                          "By Theme",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 24), // Space between text and radio buttons
-
-                      Expanded(
-                        child: Column(
-                          children: [
-                            RadioListTile<String>(
-                              title: Text('Vyapar View'),
-                              value: 'Vyapar View',
-                              groupValue: selectedTheme,
-                              activeColor: Colors.blue, // Selected color
-                              onChanged: (String? value) {
-                                setState(() {
-                                  selectedTheme = value!;
-                                });
-                              },
-                            ),
-                            RadioListTile<String>(
-                              title: Text('Accounting View'),
-                              value: 'Accounting View',
-                              groupValue: selectedTheme,
-                              activeColor: Colors.blue, // Selected color
-                              onChanged: (String? value) {
-                                setState(() {
-                                  selectedTheme = value!;
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  /// **Bottom Buttons**
-                  SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.grey[300], // Light grey
-                            foregroundColor: Colors.black,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(90),
-                            ),
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              selectedTheme = "Vyapar View"; // Reset to default
-                            });
-                          },
-                          child: Text("Reset"),
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red, // Red button
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(90),
-                            ),
-                          ),
-                          onPressed: () {
-                            print("${selectedTheme}");
-                            Navigator.of(context).pop(selectedTheme);
-                          },
-                          child: Text("Apply"),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
 }
-

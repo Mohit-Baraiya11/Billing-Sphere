@@ -90,7 +90,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
             name = value["party_name"] ?? "Unknown";
             total = value["paid"] ?? "0.00";
             unused = value["unused"] ?? "0.00";
-          } else if (type == "Expenses") {
+          } else if (type == "expenses") {
             name = value["expenses_category"] ?? "Unknown";
             total = value["total_amount"] ?? "0.00";
             unused = value["unused"] ?? "0.00";
@@ -413,7 +413,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => Purchase_Details(transactionId: transaction["id"])));
                             } else if (transaction["transactionType"] == "payment-out") {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => Payment_Out_Detail(transactionId: transaction["id"])));
-                            } else if (transaction["transactionType"] == "Expenses") {
+                            } else if (transaction["transactionType"] == "expenses") {
                               Navigator.push(context, MaterialPageRoute(builder: (context) => Expenses_Details(transactionId: transaction["id"])));
                             }
                           },
@@ -466,7 +466,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                           ? Colors.deepOrange.shade50
                                           : transaction["transactionType"] == "payment-out"
                                           ? Colors.deepOrange.shade50
-                                          : transaction["transactionType"] == "Expenses"
+                                          : transaction["transactionType"] == "expenses"
                                           ? Colors.purple.shade100
                                           : Color(0xFFC0F1E1),
                                       borderRadius: BorderRadius.circular(5),
@@ -485,7 +485,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                               ? Colors.deepOrange
                                               : transaction["transactionType"] == "payment-out"
                                               ? Colors.deepOrangeAccent
-                                              : transaction["transactionType"] == "Expenses"
+                                              : transaction["transactionType"] == "expenses"
                                               ? Colors.purple
                                               : Color(0xFFC0F1E1),
                                         ),

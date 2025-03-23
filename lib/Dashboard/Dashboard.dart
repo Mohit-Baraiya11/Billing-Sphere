@@ -1,353 +1,572 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_remix/flutter_remix.dart';
-import 'package:syncfusion_flutter_charts/charts.dart';
+import 'package:google_signup/Dashboard/Bank/Bank_Details.dart';
+import 'package:google_signup/Dashboard/Bank/Bank_account_list.dart';
+import 'package:google_signup/Dashboard/Cah_in_Hand.dart';
+import 'package:google_signup/Dashboard/Expense/Expense.dart';
+import 'package:google_signup/Dashboard/Expense/Expense_Detail.dart';
+import 'package:google_signup/Dashboard/Item/Items.dart';
+import 'package:google_signup/Dashboard/Payable.dart';
+import 'package:google_signup/Dashboard/Purchase_Report.dart';
+import 'package:google_signup/Dashboard/Receivable.dart';
+import 'package:google_signup/Home/Home.dart';
+import 'package:google_signup/Home/Sale_Report.dart';
+import 'package:remixicon/remixicon.dart';
+
+import '../Home/Transaction Details/Show All/profit&loss.dart';
 
 class Dashboard extends StatefulWidget {
-  @override
-  State<StatefulWidget> createState() => _DashboardScreenState();
-}
-class _DashboardScreenState extends State<Dashboard> {
-  bool showGraph = false;
-  List<String> tasks = [];
-  TextEditingController taskController = TextEditingController();
+  const Dashboard({super.key});
 
-  void toggleView() {
-    setState(() {
-      showGraph = !showGraph;
+  @override
+  State<Dashboard> createState() => _DashboardState();
+}
+
+class _DashboardState extends State<Dashboard> {
+
+  //recivable and payable
+  double totalReceivable = 0.0;
+  double totalPayable = 0.0;
+  Future<void> fetchTotalAmounts() async {
+
+    User? user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      print("No user logged in");
+      return;
+    }
+
+    String userId = user.uid;
+    DatabaseReference partiesRef = FirebaseDatabase.instance.ref().child('users').child('$userId').child('Parties');
+
+    partiesRef.once().then((DatabaseEvent event) {
+      double receivable = 0.0;
+      double payable = 0.0;
+
+      if (event.snapshot.value != null) {
+        Map<dynamic, dynamic> parties = event.snapshot.value as Map<dynamic, dynamic>;
+        parties.forEach((key, value) {
+          double amount = double.tryParse(value['total_amount'].toString()) ?? 0.0;
+          if (amount < 0) {
+            receivable += amount;
+          } else {
+            payable += amount.abs();
+          }
+        });
+      }
+
+      setState(() {
+        totalReceivable = -receivable;
+        totalPayable = payable;
+      });
     });
   }
 
-  void addTask() {
-    if (taskController.text.isNotEmpty) {
-      setState(() {
-        tasks.add(taskController.text);
-        taskController.clear();
-      });
+
+  //total expenses amount
+  double totalExpense = 0.0;
+  Future<void> getTotalExpenses() async {
+    double total = 0.0;
+
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print("No user logged in");
+      return;
+    }
+
+    String userId = user.uid;
+
+    try {
+      DatabaseReference ref = FirebaseDatabase.instance.ref("users/$userId/Transactions");
+      DatabaseEvent event = await ref.once();
+
+      if (event.snapshot.value != null) {
+        Map<dynamic, dynamic> transactions = event.snapshot.value as Map<dynamic, dynamic>;
+
+        transactions.forEach((key, value) {
+          if (value['type'] == 'expenses' && value.containsKey('amount')) {
+            total += double.tryParse(value['amount'].toString()) ?? 0.0;
+          }
+        });
+
+        // Use setState to update the UI
+        setState(() {
+          totalExpense = total;
+        });
+      }
+    } catch (e) {
+      print("Error fetching expenses: $e");
     }
   }
 
-  void cancelTask() {
-    taskController.clear();
-  }
 
-  void markTaskAsCompleted(int index) {
-    setState(() {
-      tasks.removeAt(index);
-    });
+  @override
+  void initState() {
+    super.initState();
+    fetchTotalAmounts();
+    getTotalExpenses();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue[50], // Background color
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-
-            Row(
-                children: [
-                  // "You'll Get" Card
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            height: 30,
-                            width: 30,
-                            decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(90),
-                            ),
-                            child: const Icon(
-                              FlutterRemix.arrow_left_down_line,
-                              color: Colors.green,
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "You'll Get",
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                "₹ 300.00",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Colors.black,
-                                ),
+        backgroundColor: Colors.blue.shade50,
+        body: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (context)=>Receivable()));
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.2),
+                                spreadRadius: 2,
+                                blurRadius: 5,
+                                offset: const Offset(0, 3),
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            height: 30,
-                            width: 30,
-                            decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(90),
-                            ),
-                            child: const Icon(
-                              FlutterRemix.arrow_right_up_line,
-                              color: Colors.red,
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Column(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                "You'll Give",
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                "₹ 300.00",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Colors.black,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ]
-            ), // Space between cards
-            SizedBox(height: 10,),
-            Row(
-                children: [
-                  // "You'll Get" Card
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "Total Sale",
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                "₹ 300.00",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                  color: Colors.red,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                ]
-            ), // Space between cards
-
-            Container(
-              height: 300,
-              child: SfCircularChart(
-                palette: [Colors.red, Colors.green],
-                series: <CircularSeries>[
-                  PieSeries<Map<String, dynamic>, String>(
-                    dataSource: [
-                      {'category': 'Sales', 'value': 10000},
-                      {'category': 'Purchases', 'value': 5000},
-                      {'category': 'Receipts', 'value': 3000},
-                      {'category': 'Balance', 'value': 2000},
-                    ],
-                    xValueMapper: (data, _) => data['category'],
-                    yValueMapper: (data, _) => data['value'],
-                    dataLabelSettings: DataLabelSettings(isVisible: true),
-                  ),
-                ],
-              ),
-            ),
-
-            Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "Expenses (Feb)",
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                "₹ 360.00",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Colors.black,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ]
-            ),
-            SizedBox(height: 10,),
-            Container(
-              padding: EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8)
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Text("Inventory",style: TextStyle(color: Colors.black,fontSize: 16,fontWeight: FontWeight.bold),),
-                  ),
-                  Divider(color: Colors.grey,thickness: 0.5,),
-                  Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade300,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              children: [
-                                const SizedBox(width: 8),
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.start,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      "Stock Value",
-                                      style: TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                              Row(
+                                children: [
+                                  Container(
+                                    height: 30,
+                                    width: 30,
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade50,
+                                      borderRadius: BorderRadius.circular(90),
                                     ),
-                                    const SizedBox(height: 4),
-                                    const Text(
-                                      "₹ 300.00",
+                                    child: Icon(Remix.arrow_left_down_line, color: Colors.green, size: 20),
+                                  ),
+                                  SizedBox(width: 5),
+                                  Text("You'll Get", style: TextStyle(fontSize: 14, color: Colors.black54)),
+                                ],
+                              ),
+                              SizedBox(height: 5),
+                              Text(
+                                "₹ ${totalReceivable.toStringAsFixed(2)}",
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (context)=>Payable()));
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.2),
+                                spreadRadius: 2,
+                                blurRadius: 5,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    height: 30,
+                                    width: 30,
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.shade50,
+                                      borderRadius: BorderRadius.circular(90),
+                                    ),
+                                    child: Icon(Remix.arrow_right_up_line, color: Color(0xFFE03537), size: 20),
+                                  ),
+                                  SizedBox(width: 5),
+                                  Text("You'll Give", style: TextStyle(fontSize: 14, color: Colors.black54)),
+                                ],
+                              ),
+                              SizedBox(height: 5),
+                              Text(
+                                "₹ ${totalPayable.toStringAsFixed(2)}",
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 20),
+
+                SizedBox(
+                  height: 350, // Set a fixed height
+                  width: double.infinity,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 20),
+
+                //purchase and Expense
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              "Purchase (Feb)",
+                              style: TextStyle(fontSize: 14, color: Colors.black54),
+                            ),
+                            SizedBox(height: 5),
+                            Text(
+                              "₹ 110.00",
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: (){
+                          Navigator.push(context, MaterialPageRoute(builder: (context)=>Expense()));
+                        },
+                        child: Container(
+                          padding: EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Expense",
+                                style: TextStyle(fontSize: 14, color: Colors.black54),
+                              ),
+                              SizedBox(height: 5),
+                              Text(
+                                "₹ ${totalExpense.toStringAsFixed(2)}",
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 20),
+
+
+
+                // Cash & Bank Section
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Cash & Bank",
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: (){
+                                Navigator.push(context, MaterialPageRoute(builder: (context)=>Bank_Account_List()));
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: const [
+                                    Text(
+                                      "Bank Balance",
+                                      style: TextStyle(fontSize: 14, color: Colors.black54),
+                                    ),
+                                    SizedBox(height: 5),
+                                    Text(
+                                      "₹ 3640.00",
                                       style: TextStyle(
+                                        fontSize: 18,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                        color: Colors.green,
+                                        color: Color(0xFF38C782), // Green Color
                                       ),
                                     ),
                                   ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              children: [
-                                Column(
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: (){
+                                Navigator.push(context, MaterialPageRoute(builder: (context)=>Cash_In_Hand()));
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      "No. of ltems",
+                                  children: const [
+                                    Text(
+                                      "Cash in-hand",
+                                      style: TextStyle(fontSize: 14, color: Colors.black54),
+                                    ),
+                                    SizedBox(height: 5),
+                                    Text(
+                                      "₹ 3640.00",
                                       style: TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 14,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFFE03537), // Red Color
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    const Text(
-                                      "3",
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        "List of Bank",
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 5),
+                      // Use ListView.builder for dynamic data
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: 1,
+                        itemBuilder: (context, index) {
+                          return ListTile(
+                                onTap: (){
+                                  Navigator.push(context, MaterialPageRoute(builder: (context)=>Bank_Details()));
+                                },
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                visualDensity: VisualDensity(vertical: -4),
+                                leading: Text("HDFC", style: TextStyle(fontSize: 15)),
+                                trailing:  Text("₹ 400.00", style: TextStyle(fontSize: 15, color: Color(0xFFE03537)),),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 20),
+
+                // Inventory Section
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Inventory",
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: (){
+                                Navigator.push(context, MaterialPageRoute(builder: (context)=>Items()));
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: const [
+                                    Text(
+                                      "Stock Value",
+                                      style: TextStyle(fontSize: 14, color: Colors.black54),
+                                    ),
+                                    SizedBox(height: 5),
+                                    Text(
+                                      "₹ 3,01,640.00",
                                       style: TextStyle(
+                                        fontSize: 18,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 16,
+                                        color: Color(0xFF38C782), // Green Color
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: (){
+                                Navigator.push(context, MaterialPageRoute(builder: (context)=>Items()));
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: const [
+                                    Text(
+                                      "No. of Items",
+                                      style: TextStyle(fontSize: 14, color: Colors.black54),
+                                    ),
+                                    SizedBox(height: 5),
+                                    Text(
+                                      "5",
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
                                         color: Colors.black,
                                       ),
                                     ),
                                   ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                      ]
+                        ],
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        "Low Stock Items (2)",
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 5),
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics:  NeverScrollableScrollPhysics(),
+                        itemCount: 2,
+                        itemBuilder: (context, index) {
+                          return ListTile(
+                                onTap: (){
+                                 // Navigator.push(context, MaterialPageRoute(builder: (context)=>ItemDetailsScreen(itemName: "Maggie", salePrice: 100, purchasePrice: 20, inStock: 10)));
+                                },
+                                dense: true,
+                                visualDensity: VisualDensity(vertical: -4),
+                                contentPadding: EdgeInsets.zero,
+                                leading: Text("Maggie", style: TextStyle(fontSize: 15)),
+                                trailing: Text(
+                                  "₹ 400.00",
+                                  style: TextStyle(fontSize: 15, color: Color(0xFFE03537)),
+                                ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
+                ),
+                SizedBox(height: 20),
 
-          ],
+                // Expenses Section
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Expenses",
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 10),
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: 2,
+                        itemBuilder: (context, index) {
+                          return ListTile(
+                                onTap:(){
+                                  Navigator.push(context, MaterialPageRoute(builder: (context)=>Expense_Detail(Expense_Category: "Grocery")));
+                                },
+                                contentPadding: EdgeInsets.zero,
+                                visualDensity: VisualDensity(vertical: -4),
+                                dense: true,
+                                leading: Text("Grocery", style: TextStyle(fontSize: 15)),
+                                trailing: Text(
+                                  "₹ 400.00",
+                                  style: TextStyle(fontSize: 15, color: Color(0xFFE03537)),
+                              ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+              ],
+            ),
+          ),
         ),
-      ),
     );
   }
-
 }

@@ -204,10 +204,11 @@ class _Purchase extends State<Purchase> {
         Map<dynamic, dynamic> partyData = partyEvent.snapshot.value as Map<dynamic, dynamic>;
         double existingAmount = double.parse(partyData["total_amount"].toString());
 
-        // ✅ Subtract balance_due instead of adding
-        totalPartyAmount = existingAmount - balanceDue;
+        // ✅ Corrected: Add balance_due instead of subtracting
+        totalPartyAmount = existingAmount + balanceDue;
       } else {
-        totalPartyAmount = -balanceDue; // If first-time entry, set it as negative
+        // ✅ First-time entry should be positive
+        totalPartyAmount = balanceDue;
       }
 
       // ✅ Update Party Details

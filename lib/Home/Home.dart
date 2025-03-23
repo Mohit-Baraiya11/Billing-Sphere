@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_remix/flutter_remix.dart';
+import 'package:google_signup/Home/Party%20Details/Party_DetailsTab.dart';
 import 'package:google_signup/Home/Party%20Details/all_parties_report.dart';
 import 'package:google_signup/Home/Transaction%20Details/TransactionDetailsTab.dart';
 import 'Party Details/Add_new_party.dart';
@@ -91,141 +92,6 @@ const default_color = Color(0xFFACC7DFFF);
 // var labelOf_iconOf_party_detail_show_all = [
 //   "All Parties Report",
 // ];
-class PartyDetailsTab extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.blue.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(10.0),
-        child: Column(
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8.0)
-              ),
-              padding:EdgeInsets.only(top: 4.0,bottom: 4.0),
-              child: Column(
-                children: [
-                  Container(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 35,bottom: 7),
-                      child: Text(
-                        "Quick Links",
-                        style: TextStyle(fontSize: 15),
-                      ),
-                    ),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      //import party
-                      QuickLink(
-                        icon: FlutterRemix.account_box_line,
-                        label: "Import Party",
-                        backgroundColor: Colors.lightBlue,
-                        onTap: (){
-                          Navigator.push(context, MaterialPageRoute(builder: (context)=>Import_Party()));
-                        },
-                      ),
-
-                      //party statement
-                      QuickLink(
-                        backgroundColor: Colors.lightBlue,
-                        icon: FlutterRemix.contacts_line,
-                        label: "Party Statement",
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (context)=>Party_Statement()));
-                        },
-                      ),
-
-                      //show All
-                      QuickLink(
-                        backgroundColor: Colors.lightBlue,
-                        icon: FlutterRemix.building_4_line,
-                        label: "All Parties Report",
-                        onTap: (){
-                            Navigator.push(context, MaterialPageRoute(builder: (context)=>All_Parties_Report()));
-                        }
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 10,),
-            Expanded(
-              child:  Stack(
-                children:[
-                  ListView.builder(
-                  itemCount: 1,
-                  itemBuilder: (context, index) {
-                    return Container(
-                      margin: EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8)
-                      ),
-                      child: ListTile(
-                        title: Text("Mohit",style: TextStyle(fontSize: 13,fontWeight: FontWeight.w400,color: Colors.black),),
-                        subtitle: Text("22 jan 25",style: TextStyle(fontSize: 12,color: Colors.grey),),
-                        trailing: Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Column(
-                            children: [
-                              Text("#200",style: TextStyle(fontSize: 13,color: Colors.greenAccent),),
-                              Text("you'll get",style: TextStyle(fontSize: 13,color: Colors.greenAccent),),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                  Positioned(
-                    bottom: 20,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.all(14),
-                          backgroundColor: Colors.red,
-                          // shape: RoundedRectangleBorder(
-                          //   borderRadius: BorderRadius.circular(15),
-                          // ),
-                        ),
-                        onPressed: () {
-                          Navigator.push(context,MaterialPageRoute(builder: (context)=>Add_new_Party()));
-                        },
-                        child: SizedBox(
-                          width: 130,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(FlutterRemix.user_3_line,color: Colors.white,size: 20,),
-                              const SizedBox(width: 8),
-                              Text(
-                                "Add New Party",
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-               ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class QuickLink extends StatelessWidget {
   final IconData icon;

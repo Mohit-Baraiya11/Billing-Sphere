@@ -19,6 +19,7 @@ class _AllPartiesReportState extends State<All_Parties_Report> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        surfaceTintColor: Color(0xFF0078AA),
         backgroundColor: Color(0xFF0078AA),
         title: Text(
           "Party Report",
@@ -31,11 +32,7 @@ class _AllPartiesReportState extends State<All_Parties_Report> {
             width: 25,
             child: Image.asset("Assets/Images/pdf.png"),
           ),
-          Container(
-            height: 30,
-            width: 50,
-            child: Image.asset("Assets/Images/xls.png"),
-          ),
+          SizedBox(width: 10,),
         ],
       ),
       body: Container(
