@@ -103,11 +103,123 @@ class _DashboardState extends State<Dashboard> {
   }
 
 
+  ///total cash in hand
+  double totalCashInHand = 0.0;
+  Future<void> loadCashBalance() async {
+    totalCashInHand = await getCashBalance();
+    setState(() {});
+  }
+  void updateCashBalance() async {
+    double balance = await getCashBalance();
+    setState(() {
+      totalCashInHand = balance;
+    });
+  }
+  Future<double> getCashBalance() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return 0.0;
+
+    String userId = user.uid;
+    DatabaseReference cashRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Cash");
+
+    try {
+      DataSnapshot snapshot = (await cashRef.once()).snapshot;
+
+      if (snapshot.value != null) {
+        Map<dynamic, dynamic> data = snapshot.value as Map<dynamic, dynamic>;
+
+        if (data.containsKey('total_balance')) {
+          String balanceStr = data['total_balance'].toString().replaceAll('\$', '').trim();
+          return double.tryParse(balanceStr) ?? 0.0;
+        }
+      }
+    } catch (e) {
+      print("Error fetching cash balance: $e");
+    }
+
+    return 0.0;
+  }
+
+
+  ///total bank balance
+  double totalBankBalance = 0.0;
+  Future<void> fetchTotalBankBalance() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      DataSnapshot snapshot = await FirebaseDatabase.instance
+          .ref('users/${user.uid}/Bank_accounts/Bank')
+          .get();
+
+      if (snapshot.value != null) {
+        Map<dynamic, dynamic> data = snapshot.value as Map<dynamic, dynamic>;
+        double total = 0.0;
+
+        data.forEach((bankId, bankData) {
+          if (bankData is Map) {
+            double balance = double.tryParse(bankData['total_balance']?.toString() ?? '0') ?? 0.0;
+            total += balance;
+          }
+        });
+
+        setState(() {
+          totalBankBalance = total;
+        });
+      }
+    } catch (e) {
+      print("Error calculating total bank balance: $e");
+    }
+  }
+
+
+  ///bank acoounts
+  List<Map<String, dynamic>> bankAccounts = [];
+  bool isLoading = true;
+  Future<void> fetchBankAccounts() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() => isLoading = false);
+      return;
+    }
+
+    String userId = user.uid;
+    DatabaseReference bankRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Bank");
+
+    try {
+      DatabaseEvent event = await bankRef.once();
+      if (event.snapshot.value != null) {
+        Map<dynamic, dynamic> data = event.snapshot.value as Map<dynamic, dynamic>;
+
+        bankAccounts.clear();
+
+        data.forEach((bankId, bankData) {
+          if (bankData is Map) {
+            bankAccounts.add({
+              'bankName': bankData['bank_name'] ?? 'Unknown Bank',
+              'totalBalance': double.tryParse(bankData['total_balance']?.toString() ?? '0') ?? 0.0,
+              'accountHolder': bankData['holder_name'] ?? '',
+              'ifsc': bankData['ifac'] ?? '',
+            });
+          }
+        });
+      }
+    } catch (e) {
+      print("Error fetching bank accounts: $e");
+    }
+
+    setState(() => isLoading = false);
+  }
+
+
   @override
   void initState() {
     super.initState();
     fetchTotalAmounts();
     getTotalExpenses();
+    loadCashBalance();
+    fetchTotalBankBalance();
+    fetchBankAccounts();
   }
 
   @override
@@ -326,18 +438,18 @@ class _DashboardState extends State<Dashboard> {
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: const [
-                                    Text(
+                                  children: [
+                                    const Text(
                                       "Bank Balance",
                                       style: TextStyle(fontSize: 14, color: Colors.black54),
                                     ),
-                                    SizedBox(height: 5),
+                                    const SizedBox(height: 5),
                                     Text(
-                                      "₹ 3640.00",
-                                      style: TextStyle(
+                                      "₹ ${totalBankBalance.toStringAsFixed(2)}",
+                                      style: const TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
-                                        color: Color(0xFF38C782), // Green Color
+                                        color: Color(0xFF38C782),
                                       ),
                                     ),
                                   ],
@@ -359,18 +471,18 @@ class _DashboardState extends State<Dashboard> {
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: const [
+                                  children: [
                                     Text(
                                       "Cash in-hand",
                                       style: TextStyle(fontSize: 14, color: Colors.black54),
                                     ),
                                     SizedBox(height: 5),
                                     Text(
-                                      "₹ 3640.00",
+                                      "₹ ${totalCashInHand}",
                                       style: TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
-                                        color: Color(0xFFE03537), // Red Color
+                                        color: totalCashInHand<0?Color(0xFFE03537):Color(0xFF38C782), // Red Color
                                       ),
                                     ),
                                   ],
@@ -389,18 +501,19 @@ class _DashboardState extends State<Dashboard> {
                       // Use ListView.builder for dynamic data
                       ListView.builder(
                         shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: 1,
+                        physics: NeverScrollableScrollPhysics(),
+                        itemCount: bankAccounts.length,
                         itemBuilder: (context, index) {
+                          final bank = bankAccounts[index];
                           return ListTile(
                                 onTap: (){
-                                  Navigator.push(context, MaterialPageRoute(builder: (context)=>Bank_Details()));
+                                  Navigator.push(context, MaterialPageRoute(builder: (context)=>Bank_Details(bankName: bank['bankName'],)));
                                 },
                                 dense: true,
                                 contentPadding: EdgeInsets.zero,
                                 visualDensity: VisualDensity(vertical: -4),
-                                leading: Text("HDFC", style: TextStyle(fontSize: 15)),
-                                trailing:  Text("₹ 400.00", style: TextStyle(fontSize: 15, color: Color(0xFFE03537)),),
+                                leading: Text(bank['bankName'], style: TextStyle(fontSize: 15)),
+                                trailing:  Text("₹ ${bank['totalBalance'].toStringAsFixed(2)}", style: TextStyle(fontSize: 15, color: Color(0xFFE03537)),),
                           );
                         },
                       ),

@@ -1,4 +1,7 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_signup/Dashboard/Bank/Bank_Adjustment.dart';
 import 'package:google_signup/Dashboard/Bank/Bank_Transfer.dart';
 import 'package:google_signup/Dashboard/Bank/Bank_to_Bank_Transfer.dart';
@@ -8,117 +11,223 @@ import '../../Home/Prefered_underline_appbar.dart';
 import '../../Home/Transaction Details/Show All/add_bank_account.dart';
 
 class Bank_Details extends StatefulWidget {
+  String bankName;
+  Bank_Details({required this.bankName});
   @override
-  State<Bank_Details> createState() => _Bank_Details();
+  State<Bank_Details> createState() => _Bank_Details(bankName: this.bankName);
 }
 
 class _Bank_Details extends State<Bank_Details> {
+  final String bankName;
+  _Bank_Details({required this.bankName});
+
+  double totalBalance = 0.0;
+  List<Map<String, dynamic>> transactions = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchBankDetails();
+  }
+
+  Future<void> fetchBankDetails() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() => isLoading = false);
+      return;
+    }
+
+    try {
+      // Fetch bank details
+      DataSnapshot bankSnapshot = await FirebaseDatabase.instance
+          .ref('users/${user.uid}/Bank_accounts/Bank/$bankName')
+          .get();
+
+      if (bankSnapshot.value != null) {
+        Map<dynamic, dynamic> bankData = bankSnapshot.value as Map<dynamic, dynamic>;
+
+        // Update total balance - fixed field name (total_balance vs total_Balance)
+        setState(() {
+          totalBalance = double.tryParse((bankData['total_balance']?.toString() ?? '0').replaceAll('\$', '')) ?? 0.0;
+        });
+
+        // Fetch transactions - using correct case for Bank_transaction
+        DataSnapshot transactionsSnapshot = await FirebaseDatabase.instance
+            .ref('users/${user.uid}/Bank_accounts/Bank/$bankName/Bank_transaction')
+            .get();
+
+        if (transactionsSnapshot.value != null) {
+          Map<dynamic, dynamic> transData = transactionsSnapshot.value as Map<dynamic, dynamic>;
+          List<Map<String, dynamic>> loadedTransactions = [];
+
+          transData.forEach((key, value) {
+            if (value is Map) {
+              // Get transaction details (some might be nested under 'transaction')
+              Map<dynamic, dynamic> transaction = value.containsKey('transaction')
+                  ? value['transaction'] as Map<dynamic, dynamic>
+                  : value;
+
+              // Determine display name - using correct field names from your data
+              String displayName = transaction['customer'] ??
+                  transaction['party_name'] ??
+                  (transaction['type']?.toString()?.toLowerCase().contains('expense') ?? false
+                      ? 'Expense'
+                      : 'Transaction');
+
+              loadedTransactions.add({
+                'amount': double.tryParse(transaction['amount']?.toString().replaceAll('\$', '') ?? '0') ?? 0.0,
+                'date': transaction['date'] ?? '',
+                'name': displayName,
+                'type': transaction['type']?.toString()?.toLowerCase() ?? 'payment',
+                // Add more fields if needed for your UI
+                'phone': transaction['phone'] ?? '',
+                'received': transaction['received'] ?? '',
+              });
+            }
+          });
+
+          // Sort transactions by date (newest first)
+          loadedTransactions.sort((a, b) => (b['date'] ?? '').compareTo(a['date'] ?? ''));
+
+          setState(() {
+            transactions = loadedTransactions;
+          });
+        }
+      }
+    } catch (e) {
+      print("Error fetching bank details: $e");
+    }
+
+    setState(() => isLoading = false);
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.grey.shade400,
+          statusBarIconBrightness: Brightness.light,
+        ),
         surfaceTintColor: Colors.white,
-        title: Text('Bank Details', style: TextStyle(color: Colors.black,fontSize: 18,fontWeight: FontWeight.bold)),
+        title: Text('Bank Details', style: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         bottom: Prefered_underline_appbar(),
         actions: [
           IconButton(
-              onPressed: (){
-                Navigator.push(context, MaterialPageRoute(builder: (context)=>Add_Bank_Account()));
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => Add_Bank_Account()));
               },
               icon: Icon(Remix.pencil_line)
           ),
         ],
       ),
       backgroundColor: Colors.blue.shade50,
-      body: Container(
+      body: isLoading
+          ? Center(child: CircularProgressIndicator())
+          : Container(
         height: double.infinity,
         child: Stack(
           children: [
             Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.symmetric(vertical: 10,horizontal: 16),
-                    color: Colors.white,
-                    child: Text("HDFC",style: TextStyle(fontSize: 16),),
-                  ),
-                  SizedBox(height: 10,),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                  color: Colors.white,
+                  child: Text(bankName, style: TextStyle(fontSize: 16)),
+                ),
+                SizedBox(height: 10),
 
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                // Balance Card
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Balance", style: TextStyle(fontSize: 13, color: Colors.black54)),
+                        SizedBox(height: 10),
+                        Text(
+                          " ₹${totalBalance.toStringAsFixed(2)}",
+                          style: TextStyle(fontSize: 18, color: Color(0xFF38C782)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: 16.0),
+
+                // Transactions List
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
                     child: Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.symmetric(horizontal: 16,vertical: 12),
+                      padding: EdgeInsets.symmetric(vertical: 4),
                       decoration: BoxDecoration(
-                        color:Colors.white,
-                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
                       ),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text("Balance",style: TextStyle(fontSize: 13,color: Colors.black54),),
-                          SizedBox(height: 10,),
-                          Text(" ₹58.00",style: TextStyle(fontSize: 18,color: Color(0xFF38C782),),),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text("Transaction Details"),
+                                Text("Amount")
+                              ],
+                            ),
+                          ),
+                          Divider(),
+                          Expanded(
+                            child: transactions.isEmpty
+                                ? Center(child: Text("No transactions found"))
+                                : ListView.builder(
+                              itemCount: transactions.length,
+                              itemBuilder: (context, index) {
+                                final transaction = transactions[index];
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    ListTile(
+                                      title: Text(
+                                        "${transaction['type'] == 'expenses' ? 'Expense' : 'Payment'} - ${transaction['name']}",
+                                      ),
+                                      subtitle: Text(transaction['date']),
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                                      trailing: Text(
+                                        '₹${transaction['amount'].toStringAsFixed(2)}',
+                                        style: TextStyle(
+                                          color: transaction['type'] == 'expenses'
+                                              ? Color(0xFFE03537)
+                                              : Color(0xFF38C782),
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ),
+                                    Divider(),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ),
-                  SizedBox(height: 16.0),
-                  Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Container(
-                          padding: EdgeInsets.symmetric(vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child:Column(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text("Transaction Details"),
-                                    Text("Amount")
-                                  ],
-                                ),
-                              ),
-                              Divider(),
-                              Expanded(
-                                child: ListView.builder(
-                                  itemCount: 1,
-                                  itemBuilder: (context, index) {
-                                    return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        ListTile(
-                                          title: Text('Payment-out - Mitesh'),
-                                          subtitle: Text('06 Feb 2025'),
-                                          contentPadding: EdgeInsets.symmetric(horizontal: 16),
-                                          trailing: Text(
-                                            '₹58.00',
-                                            style: TextStyle(color:Color(0xFFE03537), fontWeight: FontWeight.w500,fontSize: 16),
-                                          ),
-                                        ),
-                                        Divider(),
-                                      ],
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                  )
-
-                ],
-              ),
-
+                )
+              ],
+            ),
             Positioned(
               bottom: 20,
               left: 0,
@@ -134,17 +243,17 @@ class _Bank_Details extends State<Bank_Details> {
                   },
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          "Deposit/Withdraw",
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    ),
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Deposit/Withdraw",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
                   ),
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -317,5 +426,4 @@ class _Bank_Details extends State<Bank_Details> {
       },
     );
   }
-
 }

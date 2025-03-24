@@ -25,7 +25,7 @@ class _Cash_In_HandState extends State<Cash_In_Hand> {
 
   Future<void> fetchCashDetails() async {
     setState(() {
-      isLoading = true; // Start loading
+      isLoading = true;
     });
 
     User? user = FirebaseAuth.instance.currentUser;
@@ -46,44 +46,68 @@ class _Cash_In_HandState extends State<Cash_In_Hand> {
 
         // Fetch total balance
         if (data.containsKey('total_balance')) {
-          totalCashBalance = double.tryParse(data['total_balance'].toString()) ?? 0.0;
+          totalCashBalance = double.tryParse(data['total_balance'].toString().replaceAll('\$', '')) ?? 0.0;
         }
 
-        // Fetch transactions
         transactions.clear();
+
+        // Fetch all cash transactions from Cash_transaction
         if (data.containsKey('Cash_transaction')) {
           Map<dynamic, dynamic> transData = data['Cash_transaction'] as Map<dynamic, dynamic>;
 
           transData.forEach((key, value) {
-            if (value is Map && value.containsKey('transaction')) {
-              Map<dynamic, dynamic> transactionDetails = value['transaction'];
+            if (value is Map) {
+              // Get the transaction details (some might be nested under 'transaction')
+              Map<dynamic, dynamic> transactionDetails = value.containsKey('transaction')
+                  ? value['transaction'] as Map<dynamic, dynamic>
+                  : value;
+
+              double amount = double.tryParse(transactionDetails['amount']?.toString()?.replaceAll('\$', '') ?? '0') ?? 0.0;
+              String type = transactionDetails['type']?.toString()?.toLowerCase() ?? '';
+
+              // Determine display name based on transaction type and available fields
+              String displayName;
+              if (type == 'expenses') {
+                displayName = transactionDetails['expenses_category'] ??
+                    transactionDetails['category'] ??
+                    'Expense';
+              } else {
+                displayName = transactionDetails['customer'] ??
+                    transactionDetails['party_name'] ??
+                    'Payment';
+              }
 
               transactions.add({
-                'amount': double.tryParse(value['amount'].toString()) ?? 0.0,
-                'date': value['date'] ?? '',
-                'current_time': value['current_time'] ?? '',
-                'transactionId': transactionDetails['transactionId'] ?? '',
-                'name': transactionDetails['party_name'] ?? 'No Description',
-                'paymentType': transactionDetails['paymentType'] ?? 'Unknown',
-                'party_name': transactionDetails['party_name'] ?? 'N/A',
-                'phone': transactionDetails['phone'] ?? 'N/A',
-                'type': transactionDetails['type'] ?? '',
+                'amount': amount,
+                'date': transactionDetails['date'] ?? '',
+                'current_time': value['current_time']?.toString() ?? DateTime.now().toString(),
+                'transactionId': transactionDetails['transactionId'] ?? key,
+                'name': displayName,
+                'paymentType': transactionDetails['paymentType'] ?? 'Cash',
+                'type': type,
+                'category': transactionDetails['expenses_category'] ?? transactionDetails['category'] ?? '',
+                'description': transactionDetails['description'] ?? '',
               });
             }
           });
-
-          // Sort transactions by date (latest first)
-          transactions.sort((a, b) => b['current_time'].compareTo(a['current_time']));
         }
+
+        // Sort transactions by date (latest first)
+        transactions.sort((a, b) {
+          String timeA = a['current_time'] ?? '';
+          String timeB = b['current_time'] ?? '';
+          return timeB.compareTo(timeA);
+        });
       }
     } catch (e) {
       print("Error fetching cash transactions: $e");
     }
 
     setState(() {
-      isLoading = false; // Stop loading
+      isLoading = false;
     });
   }
+
 
   @override
   Widget build(BuildContext context) {

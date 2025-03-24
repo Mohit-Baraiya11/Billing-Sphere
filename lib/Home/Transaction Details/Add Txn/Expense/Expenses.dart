@@ -201,7 +201,7 @@ class _Expenses extends State<Expenses> {
     String transactionId = transactionsRef.push().key!;
 
     // Convert total amount to double
-    double totalAmount = double.tryParse(total_price.text) ?? 0.0;
+    double totalAmount = _calculateTotal();
 
     // Prepare expense data
     Map<String, dynamic> expenseData = {
