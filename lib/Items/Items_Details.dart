@@ -1,33 +1,85 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_remix/flutter_remix.dart';
 import 'package:google_signup/Home/Prefered_underline_appbar.dart';
 import 'package:google_signup/Items/Adjust_Stock.dart';
-import 'package:remixicon/remixicon.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 
-class Items_Details extends StatefulWidget
-{
+class Items_Details extends StatefulWidget {
+  final String itemId;
+  const Items_Details({Key? key, required this.itemId}) : super(key: key);
+
   @override
-  State<StatefulWidget> createState()=>ItemsDetail();
+  State<Items_Details> createState() => _ItemsDetailState();
 }
 
-class ItemsDetail extends State<Items_Details>
-{
+class _ItemsDetailState extends State<Items_Details> {
+  Map<String, dynamic> itemData = {
+    'itemName': 'Loading...',
+    'Location': 'Loading...',
+    'salePrice': 0.0,
+    'purchasePrice': 0.0,
+    'openingStock': 0,
+    'itemCode': 'Loading...',
+  };
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchItemDetails();
+  }
+
+  Future<void> _fetchItemDetails() async {
+    try {
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      DatabaseReference itemRef = FirebaseDatabase.instance
+          .ref("users/${user.uid}/Items/${widget.itemId}");
+
+      DatabaseEvent event = await itemRef.once();
+      if (event.snapshot.value != null) {
+        Map<dynamic, dynamic> data = event.snapshot.value as Map<dynamic, dynamic>;
+
+        setState(() {
+          itemData = {
+            'itemName': data['basicInfo']?['itemName'] ?? 'No Name',
+            'Location': data['stock']?['Location'] ?? 'No Location',
+            'salePrice': data['pricing']?['salePrice']?.toDouble() ?? 0.0,
+            'purchasePrice': data['pricing']?['purchasePrice']?.toDouble() ?? 0.0,
+            'openingStock': data['stock']?['openingStock']?.toInt() ?? 0,
+            'itemCode': data['basicInfo']?['itemCode'] ?? 'No Code',
+          };
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      print("Error fetching item details: $e");
+      setState(() => isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Calculate stock value
+    double stockValue = itemData['purchasePrice'] * itemData['openingStock'];
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text(
-          "Item Details",
-          style: TextStyle(fontWeight: FontWeight.w500,fontSize: 20, color: Colors.black),
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.grey.shade400,
+          statusBarIconBrightness: Brightness.light,
         ),
+        surfaceTintColor: Colors.white,
+        title: Text("Item Details", style: TextStyle(fontWeight: FontWeight.w500, fontSize: 20, color: Colors.black)),
         bottom: Prefered_underline_appbar(),
         backgroundColor: Colors.white,
-        elevation: 0,
         actions: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: EdgeInsets.symmetric(horizontal: 8),
             child: Image.asset(
               "Assets/Images/xls.png",
               height: 25,
@@ -35,20 +87,18 @@ class ItemsDetail extends State<Items_Details>
             ),
           ),
           IconButton(
-            icon: const Icon(
-              FlutterRemix.pencil_line,
-              color: Colors.blue,
-            ),
+            icon: Icon(FlutterRemix.pencil_line, color: Colors.blue),
             onPressed: () {},
           ),
         ],
       ),
-      body: Stack(
+      body: isLoading
+          ? Center(child: CircularProgressIndicator())
+          : Stack(
         children: [
-          // Content (Scrollable)
           Positioned.fill(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 80), // Space for button
+              padding: const EdgeInsets.only(bottom: 80),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -58,12 +108,12 @@ class ItemsDetail extends State<Items_Details>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          "Cofee",
+                        Text(
+                          itemData['itemName'],
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
-                        const Text(
-                          "Location: Gujarat",
+                        Text(
+                          "Location: ${itemData['Location']}",
                           style: TextStyle(color: Colors.grey),
                         ),
                       ],
@@ -78,27 +128,25 @@ class ItemsDetail extends State<Items_Details>
                       children: [
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
+                          children: [
                             Text("Sale Price", style: TextStyle(color: Colors.grey)),
-                            Text("₹ 550.00",
-                                style: TextStyle(
-                                    fontSize: 16, fontWeight: FontWeight.bold)),
+                            Text("₹ ${itemData['salePrice'].toStringAsFixed(2)}",
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                           ],
                         ),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
+                          children: [
                             Text("Purchase Price", style: TextStyle(color: Colors.grey)),
-                            Text("₹ 400.00",
-                                style: TextStyle(
-                                    fontSize: 16, fontWeight: FontWeight.bold)),
+                            Text("₹ ${itemData['purchasePrice'].toStringAsFixed(2)}",
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                           ],
                         ),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
+                          children: [
                             Text("In Stock", style: TextStyle(color: Colors.grey)),
-                            Text("150.0",
+                            Text(itemData['openingStock'].toString(),
                                 style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -118,21 +166,19 @@ class ItemsDetail extends State<Items_Details>
                       children: [
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
+                          children: [
                             Text("Stock Value", style: TextStyle(color: Colors.grey)),
-                            Text("₹ 3,00,000.00",
-                                style: TextStyle(
-                                    fontSize: 16, fontWeight: FontWeight.bold)),
+                            Text("₹ ${stockValue.toStringAsFixed(2)}",
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                           ],
                         ),
                         SizedBox(width: 40),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
+                          children: [
                             Text("Item Code", style: TextStyle(color: Colors.grey)),
-                            Text("386828152",
-                                style: TextStyle(
-                                    fontSize: 16, fontWeight: FontWeight.bold)),
+                            Text(itemData['itemCode'],
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                           ],
                         ),
                       ],
@@ -144,7 +190,7 @@ class ItemsDetail extends State<Items_Details>
                   Container(
                     padding: const EdgeInsets.all(8),
                     color: Colors.grey.shade100,
-                    child: const Column(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
@@ -155,12 +201,9 @@ class ItemsDetail extends State<Items_Details>
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text("Transactions",
-                                style: TextStyle(color: Colors.grey, fontSize: 14)),
-                            Text("Quantity",
-                                style: TextStyle(color: Colors.grey, fontSize: 14)),
-                            Text("Total Amount",
-                                style: TextStyle(color: Colors.grey, fontSize: 14)),
+                            Text("Transactions", style: TextStyle(color: Colors.grey, fontSize: 14)),
+                            Text("Quantity", style: TextStyle(color: Colors.grey, fontSize: 14)),
+                            Text("Total Amount", style: TextStyle(color: Colors.grey, fontSize: 14)),
                           ],
                         ),
                       ],
@@ -177,21 +220,20 @@ class ItemsDetail extends State<Items_Details>
                         padding: const EdgeInsets.only(left: 8.0, right: 8, top: 8, bottom: 18),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: const [
+                          children: [
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text("Opening stock",
-                                    style: TextStyle(
-                                        fontSize: 14, fontWeight: FontWeight.bold)),
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                                 Text(
                                   "29/01/2025",
                                   style: TextStyle(color: Colors.grey, fontSize: 12),
                                 ),
                               ],
                             ),
-                            Text("150.0", style: TextStyle(fontSize: 14)),
-                            Text("₹ 3,00,000.00", style: TextStyle(fontSize: 14)),
+                            Text(itemData['openingStock'].toString(), style: TextStyle(fontSize: 14)),
+                            Text("₹ ${stockValue.toStringAsFixed(2)}", style: TextStyle(fontSize: 14)),
                           ],
                         ),
                       );
@@ -217,7 +259,12 @@ class ItemsDetail extends State<Items_Details>
                   ),
                 ),
                 onPressed: () {
-                  Navigator.push(context,MaterialPageRoute(builder: (context)=>Adjust_Stock()));
+                  // Navigator.push(
+                  //   context,
+                  //   MaterialPageRoute(
+                  //     builder: (context) => Adjust_Stock(itemId: widget.itemId),
+                  //   ),
+                  // );
                 },
                 child: SizedBox(
                   width: 160,
@@ -226,7 +273,7 @@ class ItemsDetail extends State<Items_Details>
                     children: const [
                       SizedBox(width: 8),
                       Text(
-                        "Adiust Stock",
+                        "Adjust Stock",
                         style: TextStyle(color: Colors.white, fontSize: 16),
                       ),
                     ],

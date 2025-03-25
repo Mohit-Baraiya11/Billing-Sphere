@@ -47,40 +47,46 @@ class _Bank_Details extends State<Bank_Details> {
       if (bankSnapshot.value != null) {
         Map<dynamic, dynamic> bankData = bankSnapshot.value as Map<dynamic, dynamic>;
 
-        // Update total balance - fixed field name (total_balance vs total_Balance)
-        setState(() {
-          totalBalance = double.tryParse((bankData['total_balance']?.toString() ?? '0').replaceAll('\$', '')) ?? 0.0;
-        });
+        // Extract required values
+        double fetchedBalance = double.tryParse((bankData['total_balance']?.toString() ?? '0').replaceAll('\$', '')) ?? 0.0;
+        double openingBalance = double.tryParse((bankData['opening_balance']?.toString() ?? '0').replaceAll('\$', '')) ?? 0.0;
+        String dateAdded = bankData['date_added'] ?? '--';
 
-        // Fetch transactions - using correct case for Bank_transaction
+        // Fetch transactions
         DataSnapshot transactionsSnapshot = await FirebaseDatabase.instance
             .ref('users/${user.uid}/Bank_accounts/Bank/$bankName/Bank_transaction')
             .get();
 
+        List<Map<String, dynamic>> loadedTransactions = [];
+
         if (transactionsSnapshot.value != null) {
           Map<dynamic, dynamic> transData = transactionsSnapshot.value as Map<dynamic, dynamic>;
-          List<Map<String, dynamic>> loadedTransactions = [];
 
           transData.forEach((key, value) {
             if (value is Map) {
-              // Get transaction details (some might be nested under 'transaction')
+              // Extract amount correctly
+              String? amountStr = value['amount']?.toString();
+              if (amountStr == null && value.containsKey('transaction')) {
+                amountStr = value['transaction']['amount']?.toString();
+              }
+              double amount = double.tryParse(amountStr?.replaceAll('\$', '') ?? '0') ?? 0.0;
+
+              // Fetch correct transaction fields
               Map<dynamic, dynamic> transaction = value.containsKey('transaction')
                   ? value['transaction'] as Map<dynamic, dynamic>
                   : value;
 
-              // Determine display name - using correct field names from your data
               String displayName = transaction['customer'] ??
                   transaction['party_name'] ??
-                  (transaction['type']?.toString()?.toLowerCase().contains('expense') ?? false
+                  (transaction['type']?.toString().toLowerCase().contains('expense') ?? false
                       ? 'Expense'
                       : 'Transaction');
 
               loadedTransactions.add({
-                'amount': double.tryParse(transaction['amount']?.toString().replaceAll('\$', '') ?? '0') ?? 0.0,
+                'amount': amount,
                 'date': transaction['date'] ?? '',
                 'name': displayName,
-                'type': transaction['type']?.toString()?.toLowerCase() ?? 'payment',
-                // Add more fields if needed for your UI
+                'type': transaction['type']?.toString().toLowerCase() ?? 'payment',
                 'phone': transaction['phone'] ?? '',
                 'received': transaction['received'] ?? '',
               });
@@ -89,11 +95,22 @@ class _Bank_Details extends State<Bank_Details> {
 
           // Sort transactions by date (newest first)
           loadedTransactions.sort((a, b) => (b['date'] ?? '').compareTo(a['date'] ?? ''));
-
-          setState(() {
-            transactions = loadedTransactions;
-          });
         }
+
+        // **Always Add Opening Balance Transaction at the Start**
+        loadedTransactions.insert(0, {
+          'amount': openingBalance,
+          'date': dateAdded, // Use date_added from Firebase
+          'name': 'Opening Balance',
+          'type': 'opening_balance',
+          'phone': '',
+          'received': '',
+        });
+
+        setState(() {
+          totalBalance = fetchedBalance;
+          transactions = loadedTransactions;
+        });
       }
     } catch (e) {
       print("Error fetching bank details: $e");
@@ -101,6 +118,8 @@ class _Bank_Details extends State<Bank_Details> {
 
     setState(() => isLoading = false);
   }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
