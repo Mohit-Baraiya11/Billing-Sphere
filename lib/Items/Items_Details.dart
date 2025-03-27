@@ -43,14 +43,32 @@ class _ItemsDetailState extends State<Items_Details> {
       if (event.snapshot.value != null) {
         Map<dynamic, dynamic> data = event.snapshot.value as Map<dynamic, dynamic>;
 
+        // **Fetch stock transactions**
+        Map<dynamic, dynamic>? stockTransactions = data['stock_transaction'];
+
+        List<Map<String, dynamic>> transactionsList = [];
+        if (stockTransactions != null) {
+          stockTransactions.forEach((key, value) {
+            transactionsList.add({
+              'transactionId': value['transactionId'] ?? '',
+              'type': value['type'] ?? 'Unknown',
+              'date': value['date'] ?? '',
+              'quantity': value['quantity'] ?? 0,
+              'total_amount': value['total_amount'] ?? 0,
+            });
+          });
+        }
+
+        // **Update state**
         setState(() {
           itemData = {
             'itemName': data['basicInfo']?['itemName'] ?? 'No Name',
-            'Location': data['stock']?['Location'] ?? 'No Location',
+            'Location': data['stock']?['location'] ?? 'No Location',
             'salePrice': data['pricing']?['salePrice']?.toDouble() ?? 0.0,
             'purchasePrice': data['pricing']?['purchasePrice']?.toDouble() ?? 0.0,
             'openingStock': data['stock']?['openingStock']?.toInt() ?? 0,
             'itemCode': data['basicInfo']?['itemCode'] ?? 'No Code',
+            'transactions': transactionsList, // Store all transactions
           };
           isLoading = false;
         });
@@ -64,7 +82,7 @@ class _ItemsDetailState extends State<Items_Details> {
   @override
   Widget build(BuildContext context) {
     // Calculate stock value
-    double stockValue = itemData['purchasePrice'] * itemData['openingStock'];
+    double stockValue = itemData['salePrice'] * itemData['openingStock'];
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -214,31 +232,37 @@ class _ItemsDetailState extends State<Items_Details> {
                   ListView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    itemCount: 1,
+                    itemCount: itemData['transactions'].length, 
                     itemBuilder: (context, index) {
+                      var transaction = itemData['transactions'][index];
                       return Padding(
                         padding: const EdgeInsets.only(left: 8.0, right: 8, top: 8, bottom: 18),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text("Opening stock",
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                                Text(
-                                  "29/01/2025",
-                                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                                ),
-                              ],
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(transaction['type'],
+                                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                  Text(
+                                    transaction['date'],
+                                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                                  ),
+                                ],
+                              ),
                             ),
-                            Text(itemData['openingStock'].toString(), style: TextStyle(fontSize: 14)),
-                            Text("₹ ${stockValue.toStringAsFixed(2)}", style: TextStyle(fontSize: 14)),
+                            SizedBox(width: 40,),
+                            Expanded(child: Text(transaction['quantity'].toString(), style: TextStyle(fontSize: 14))),
+                            Text("₹ ${transaction['total_amount'].toStringAsFixed(2)}",
+                                style: TextStyle(fontSize: 14)),
                           ],
                         ),
                       );
                     },
                   ),
+
                 ],
               ),
             ),
@@ -259,12 +283,12 @@ class _ItemsDetailState extends State<Items_Details> {
                   ),
                 ),
                 onPressed: () {
-                  // Navigator.push(
-                  //   context,
-                  //   MaterialPageRoute(
-                  //     builder: (context) => Adjust_Stock(itemId: widget.itemId),
-                  //   ),
-                  // );
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => Adjust_Stock(itemId: widget.itemId,),
+                    ),
+                  );
                 },
                 child: SizedBox(
                   width: 160,

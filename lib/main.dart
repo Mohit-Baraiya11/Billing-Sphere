@@ -112,7 +112,6 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
       ),
       surfaceTintColor: Colors.white,
       backgroundColor: Colors.white,
-      bottom: Prefered_underline_appbar(),
       elevation: 0,
       leading: CircleAvatar(
         backgroundColor: Colors.transparent,

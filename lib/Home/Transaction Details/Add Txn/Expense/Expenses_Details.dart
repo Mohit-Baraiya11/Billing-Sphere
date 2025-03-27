@@ -73,7 +73,7 @@ class _Expenses_Details extends State<Expenses_Details> {
   void _showAddCategoryDialog() {
     String newCategory = '';
     TextEditingController dropdownController = TextEditingController(
-      text: selected_Expense_Value, // Display the selected value in the TextField
+      text: selected_Expense_Value,
     );
 
     showDialog(
@@ -244,147 +244,256 @@ class _Expenses_Details extends State<Expenses_Details> {
       print("Error fetching expense data: $error");
     }
   }
+  // Helper method to update expense category amounts
+  Future<void> _updateExpenseCategory({
+    required String userId,
+    required String oldCategory,
+    required String newCategory,
+    required double oldAmount,
+    required double newAmount,
+  }) async
+  {
+    final DatabaseReference expenseCategoriesRef =
+    FirebaseDatabase.instance.ref("users/$userId/Expense_category");
+
+    final int currentTime = DateTime.now().millisecondsSinceEpoch;
+
+    // 1. Remove old amount from previous category (if changed)
+    if (oldCategory.isNotEmpty && oldCategory != newCategory) {
+      final DatabaseEvent oldCategoryEvent = await expenseCategoriesRef
+          .orderByChild("category_name")
+          .equalTo(oldCategory)
+          .once();
+
+      if (oldCategoryEvent.snapshot.exists) {
+        final DataSnapshot snapshot = oldCategoryEvent.snapshot;
+        final Map<dynamic, dynamic> values = snapshot.value as Map<dynamic, dynamic>;
+        final String categoryId = values.keys.first;
+        final double currentTotal = double.tryParse(values[categoryId]["total_amount"].toString()) ?? 0.0;
+
+        await expenseCategoriesRef.child(categoryId).update({
+          "total_amount": (currentTotal - oldAmount).toString(),
+          "last_updated": currentTime,
+        });
+      }
+    }
+
+    // 2. Add new amount to new category
+    if (newCategory.isNotEmpty) {
+      final DatabaseEvent newCategoryEvent = await expenseCategoriesRef
+          .orderByChild("category_name")
+          .equalTo(newCategory)
+          .once();
+
+      if (newCategoryEvent.snapshot.exists) {
+        // Category exists - update it
+        final DataSnapshot snapshot = newCategoryEvent.snapshot;
+        final Map<dynamic, dynamic> values = snapshot.value as Map<dynamic, dynamic>;
+        final String categoryId = values.keys.first;
+        final double currentTotal = double.tryParse(values[categoryId]["total_amount"].toString()) ?? 0.0;
+
+        await expenseCategoriesRef.child(categoryId).update({
+          "total_amount": (currentTotal + newAmount).toString(),
+          "last_updated": currentTime,
+        });
+      } else {
+        // Category doesn't exist - create new one
+        final String categoryId = expenseCategoriesRef.push().key!;
+        await expenseCategoriesRef.child(categoryId).set({
+          "category_name": newCategory,
+          "total_amount": newAmount.toString(),
+          "created_at": currentTime,
+          "last_updated": currentTime,
+        });
+      }
+    }
+  }
+
+// Updated updateExpenseData method
   Future<void> updateExpenseData() async {
-    User? user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    String userId = user.uid;
-    DatabaseReference expenseRef = FirebaseDatabase.instance.ref("users/$userId/Transactions/$transactionId");
-    DatabaseReference cashRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Cash");
-    DatabaseReference cashTransactionsRef = cashRef.child("Cash_transaction");
-    DatabaseReference bankAccountsRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Bank");
-
-    // Fetch the old transaction data
-    DatabaseEvent event = await expenseRef.once();
-    if (!event.snapshot.exists) {
-      print("Transaction not found!");
+    final User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User not logged in!')),
+      );
       return;
     }
 
-    Map<String, dynamic> oldData = Map<String, dynamic>.from(event.snapshot.value as Map);
-    String oldPaymentType = oldData['transaction']['paymentType'] ?? "Cash";
-    double oldTotalAmount = double.tryParse(oldData['transaction']['amount'].toString()) ?? 0.0;
+    final String userId = user.uid;
+    final DatabaseReference expenseRef = FirebaseDatabase.instance.ref("users/$userId/Transactions/$transactionId");
+    final DatabaseReference cashRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Cash");
+    final DatabaseReference cashTransactionRef = cashRef.child("Cash_transaction");
+    final DatabaseReference bankAccountsRef = FirebaseDatabase.instance.ref("users/$userId/Bank_accounts/Bank");
+    final DatabaseReference expenseCategoriesRef = FirebaseDatabase.instance.ref("users/$userId/Expense_category");
+
+    // Fetch the old transaction data
+    final DatabaseEvent event = await expenseRef.once();
+    if (!event.snapshot.exists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Transaction not found!')),
+      );
+      return;
+    }
+
+    final Map<String, dynamic> oldData = Map<String, dynamic>.from(event.snapshot.value as Map);
+    final String oldPaymentType = oldData['paymentType'] ?? "Cash";
+    final String oldCategory = oldData['category'] ?? "";
+    final double oldTotalAmount = double.tryParse(oldData['amount'].toString()) ?? 0.0;
 
     // Get new values
-    String? newPaymentType = selectedPaymentType;
-    double newTotalAmount = double.tryParse(total_price.text) ?? 0.0;
-    int currentTime = DateTime.now().millisecondsSinceEpoch;
+    final String? newPaymentType = selectedPaymentType;
+    final String newCategory = expense_category_controller.text.trim();
+    final double newTotalAmount = _calculateTotal();
+    final int currentTime = DateTime.now().millisecondsSinceEpoch;
 
     try {
-      // Handle payment type change
-      if (oldPaymentType != newPaymentType) {
-        // CASE 1: Changing from Cash to Bank
-        if (oldPaymentType == "Cash") {
-          // Add amount back to Cash balance
-          DatabaseEvent cashEvent = await cashRef.once();
-          double currentCashBalance = 0.0;
-          if (cashEvent.snapshot.value != null) {
-            currentCashBalance = double.tryParse(cashEvent.snapshot.child("total_balance").value.toString()) ?? 0.0;
-          }
-          await cashRef.update({"total_balance": (currentCashBalance + oldTotalAmount).toString()});
+      // 1. Update expense category amounts
+      await _updateExpenseCategory(
+        userId: userId,
+        oldCategory: oldCategory,
+        newCategory: newCategory,
+        oldAmount: oldTotalAmount,
+        newAmount: newTotalAmount,
+      );
 
-          // Remove from Cash transactions
-          await cashTransactionsRef.child(transactionId).remove();
-        }
-        // CASE 2: Changing from Bank to Cash
-        else {
-          DatabaseReference oldBankRef = bankAccountsRef.child(oldPaymentType);
-          DatabaseEvent bankEvent = await oldBankRef.once();
-          double currentBankBalance = 0.0;
-          if (bankEvent.snapshot.value != null) {
-            currentBankBalance = double.tryParse(bankEvent.snapshot.child("total_balance").value.toString()) ?? 0.0;
-          }
-          await oldBankRef.update({"total_balance": (currentBankBalance + oldTotalAmount).toString()});
-
-          // Remove from Bank transactions
-          await oldBankRef.child("transactions").child(transactionId).remove();
-        }
-      }
-
-      // Prepare updated expense transaction details
-      Map<String, dynamic> updatedExpenseDetails = {
+      // 2. Prepare transaction data
+      final Map<String, dynamic> transactionData = {
         "transactionId": transactionId,
         "type": "expenses",
-        "invoice_no": invoice_no ?? "0",
-        "date": "${time.day}/${time.month}/${time.year}",
-        "expenses_category": expense_category_controller.text.trim(),
         "amount": newTotalAmount.toString(),
-        "paymentType": newPaymentType,
+        "date": "${time.day}/${time.month}/${time.year}",
+        "category": newCategory,
         "description": description_controller.text.trim(),
-        "Image": image ?? "Null",
+        "paymentType": newPaymentType,
+        "current_time": currentTime,
       };
 
-      // Update the main transaction record
-      await expenseRef.update({
-        "amount": newTotalAmount.toString(),
-        "current_time": currentTime,
-        "date": "${time.day}/${time.month}/${time.year}",
-        "transactionId": transactionId,
-        "transaction": updatedExpenseDetails,
-      });
-
-      // Handle the new payment type
-      if (newPaymentType == "Cash") {
-        // Update Cash balance (deduct the amount)
-        DatabaseEvent cashEvent = await cashRef.once();
-        double currentCashBalance = 0.0;
-        if (cashEvent.snapshot.value != null) {
-          currentCashBalance = double.tryParse(cashEvent.snapshot.child("total_balance").value.toString()) ?? 0.0;
+      // 3. Handle payment type changes
+      if (oldPaymentType != newPaymentType) {
+        // Revert old payment type
+        if (oldPaymentType == "Cash") {
+          // Add back to Cash balance
+          final DatabaseEvent cashEvent = await cashRef.once();
+          final double currentCashBalance = double.tryParse(cashEvent.snapshot.child("total_balance").value.toString()) ?? 0.0;
+          await cashRef.update({"total_balance": (currentCashBalance + oldTotalAmount).toString()});
+          await cashTransactionRef.child(transactionId).remove();
+        } else {
+          // Add back to Bank balance
+          final DatabaseReference oldBankRef = bankAccountsRef.child(oldPaymentType);
+          final DatabaseEvent bankEvent = await oldBankRef.once();
+          if (bankEvent.snapshot.exists) {
+            final double currentBankBalance = double.tryParse(bankEvent.snapshot.child("total_balance").value.toString()) ?? 0.0;
+            await oldBankRef.update({"total_balance": (currentBankBalance + oldTotalAmount).toString()});
+            await oldBankRef.child("Bank_transaction").child(transactionId).remove();
+          }
         }
 
-        // Calculate amount to deduct
-        double amountToDeduct = (oldPaymentType == newPaymentType)
-            ? (newTotalAmount - oldTotalAmount) // If same payment type, adjust difference
-            : newTotalAmount; // If changed payment type, deduct full amount
+        // Process new payment type
+        if (newPaymentType == "Cash") {
+          // Deduct from Cash
+          final DatabaseEvent cashEvent = await cashRef.once();
+          final double currentCashBalance = double.tryParse(cashEvent.snapshot.child("total_balance").value.toString()) ?? 0.0;
+          await cashRef.update({"total_balance": (currentCashBalance - newTotalAmount).toString()});
+          await cashTransactionRef.child(transactionId).set({
+            "amount": newTotalAmount.toString(),
+            "current_time": currentTime,
+            "date": "${time.day}/${time.month}/${time.year}",
+            "transaction": transactionData,
+          });
+        } else {
+          // Deduct from Bank
+          final DatabaseReference newBankRef = bankAccountsRef.child(newPaymentType!);
+          final DatabaseEvent bankEvent = await newBankRef.once();
 
-        await cashRef.update({"total_balance": (currentCashBalance - amountToDeduct).toString()});
+          if (!bankEvent.snapshot.exists) {
+            await newBankRef.set({
+              "bank_name": newPaymentType,
+              "total_balance": "0",
+              "date_added": "${time.day}/${time.month}/${time.year}",
+              "holder_name": "",
+              "ifsc": "",
+              "opening_balance": "0",
+              "Bank_transaction": {},
+            });
+          }
 
-        // Add to Cash transactions
-        await cashTransactionsRef.child(transactionId).set({
-          "amount": "-$newTotalAmount",
-          "current_time": currentTime,
-          "date": "${time.day}/${time.month}/${time.year}",
-          "transactionId": transactionId,
-          "transaction": updatedExpenseDetails,
-        });
-
+          final double currentBankBalance = double.tryParse(bankEvent.snapshot.child("total_balance").value.toString()) ?? 0.0;
+          await newBankRef.update({"total_balance": (currentBankBalance - newTotalAmount).toString()});
+          await newBankRef.child("Bank_transaction").child(transactionId).set({
+            "amount": newTotalAmount.toString(),
+            "current_time": currentTime,
+            "date": "${time.day}/${time.month}/${time.year}",
+            "transaction": {
+              ...transactionData,
+              "bank_name": newPaymentType,
+            },
+          });
+        }
       } else {
-        // Handle Bank payment
-        DatabaseReference selectedBankRef = bankAccountsRef.child(newPaymentType!);
-        DatabaseEvent bankEvent = await selectedBankRef.once();
-        double currentBankBalance = 0.0;
-        if (bankEvent.snapshot.value != null) {
-          currentBankBalance = double.tryParse(bankEvent.snapshot.child("total_balance").value.toString()) ?? 0.0;
+        // Payment type didn't change, just update amounts
+        if (newPaymentType == "Cash") {
+          // Adjust Cash balance (difference between old and new amount)
+          final DatabaseEvent cashEvent = await cashRef.once();
+          final double currentCashBalance = double.tryParse(cashEvent.snapshot.child("total_balance").value.toString()) ?? 0.0;
+          await cashRef.update({
+            "total_balance": (currentCashBalance + oldTotalAmount - newTotalAmount).toString()
+          });
+          await cashTransactionRef.child(transactionId).update({
+            "amount": newTotalAmount.toString(),
+            "transaction": transactionData,
+          });
+        } else {
+          // Adjust Bank balance
+          final DatabaseReference bankRef = bankAccountsRef.child(newPaymentType!);
+          final DatabaseEvent bankEvent = await bankRef.once();
+          final double currentBankBalance = double.tryParse(bankEvent.snapshot.child("total_balance").value.toString()) ?? 0.0;
+          await bankRef.update({
+            "total_balance": (currentBankBalance + oldTotalAmount - newTotalAmount).toString()
+          });
+          await bankRef.child("Bank_transaction").child(transactionId).update({
+            "amount": newTotalAmount.toString(),
+            "transaction": {
+              ...transactionData,
+              "bank_name": newPaymentType,
+            },
+          });
         }
-
-        // Calculate amount to deduct
-        double amountToDeduct = (oldPaymentType == newPaymentType)
-            ? (newTotalAmount - oldTotalAmount) // If same payment type, adjust difference
-            : newTotalAmount; // If changed payment type, deduct full amount
-
-        await selectedBankRef.update({"total_balance": (currentBankBalance - amountToDeduct).toString()});
-
-        // Add to Bank transactions
-        await selectedBankRef.child("transactions").child(transactionId).set({
-          "amount": "-$newTotalAmount",
-          "current_time": currentTime,
-          "date": "${time.day}/${time.month}/${time.year}",
-          "transactionId": transactionId,
-          "transaction": updatedExpenseDetails,
-        });
       }
 
+      // 4. Update main transaction record
+      await expenseRef.update({
+        ...transactionData,
+        "invoice_no": invoice_no.toString(),
+        "expenses_category": newCategory,
+        "Image": image ?? "Null",
+      });
+
+      // 5. Update items if needed
+      final List<Map<String, dynamic>> itemsList = tableRows
+          .where((row) => row['itemName'].toString().trim().isNotEmpty)
+          .map((row) => {
+        "itemName": row['itemName'],
+        "qty": row['qty'],
+        "rate": row['rate'],
+        "amount": row['amount'],
+      }).toList();
+
+      await expenseRef.child("items").set(itemsList);
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text("Expense updated successfully!"),
           backgroundColor: Colors.green,
         ),
       );
+
+      setState(() {
+        is_readyonly = true;
+      });
     } catch (error) {
-      print("Error updating expense: $error");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Failed to update expense!"),
+          content: Text("Failed to update expense: ${error.toString()}"),
           backgroundColor: Colors.red,
         ),
       );

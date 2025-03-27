@@ -224,7 +224,21 @@ class Addnewitem extends State<Add_new_item> with SingleTickerProviderStateMixin
         throw Exception("Item name is required");
       }
 
-      // Prepare the item data map
+      // Parse values
+      int openingStock = int.tryParse(opening_stock.text) ?? 0;
+      double salePrice = double.tryParse(sale_price_controller.text) ?? 0.0;
+      double totalAmount = openingStock * salePrice;
+
+      // Prepare date
+      String formattedDate = _dateController.text.isNotEmpty
+          ? DateFormat("dd/MM/yyyy").format(DateTime.parse(_dateController.text))
+          : DateFormat("dd/MM/yyyy").format(DateTime.now());
+
+      // Generate unique transaction ID
+      DatabaseReference transactionRef = FirebaseDatabase.instance.ref().push();
+      String transactionId = transactionRef.key ?? DateTime.now().millisecondsSinceEpoch.toString();
+
+      // Prepare item data map
       Map<String, dynamic> itemData = {
         'basicInfo': {
           'itemName': item_name_controller.text,
@@ -237,7 +251,7 @@ class Addnewitem extends State<Add_new_item> with SingleTickerProviderStateMixin
           'createdAt': ServerValue.timestamp,
         },
         'pricing': {
-          'salePrice': double.tryParse(sale_price_controller.text) ?? 0.0,
+          'salePrice': salePrice,
           'discount': {
             'type': selectedDiscountType,
             'value': double.tryParse(discount_on_sale_price_controller.text) ?? 0.0,
@@ -249,13 +263,20 @@ class Addnewitem extends State<Add_new_item> with SingleTickerProviderStateMixin
           },
         },
         'stock': {
-          'openingStock': int.tryParse(opening_stock.text) ?? 0,
-          'asOfDate': _dateController.text.isNotEmpty
-              ? _dateController.text
-              : DateTime.now().toString(),
+          'openingStock': openingStock,
+          'asOfDate': formattedDate,
           'pricePerUnit': double.tryParse(at_price_unit_controller.text) ?? 0.0,
           'minStockQty': int.tryParse(min_stock_qty_controller.text) ?? 0,
           'location': item_location_controller.text,
+        },
+        'stock_transaction': {
+          transactionId: { // Unique ID as key
+            'transactionId': transactionId,
+            'type': 'Opening Stock',
+            'date': formattedDate,
+            'quantity': openingStock,
+            'total_amount': totalAmount,
+          }
         },
       };
 
@@ -272,7 +293,7 @@ class Addnewitem extends State<Add_new_item> with SingleTickerProviderStateMixin
 
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Item added successfully")),
+        const SnackBar(content: Text("Item added successfully")),
       );
 
     } catch (e) {

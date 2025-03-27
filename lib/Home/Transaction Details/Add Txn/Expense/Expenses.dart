@@ -196,23 +196,33 @@ class _Expenses extends State<Expenses> {
     DatabaseReference cashRef = userRef.child("Bank_accounts/Cash");
     DatabaseReference cashTransactionRef = cashRef.child("Cash_transaction");
     DatabaseReference bankAccountsRef = userRef.child("Bank_accounts/Bank");
+    DatabaseReference expenseCategoriesRef = userRef.child("Expense_category");
 
     // Generate a unique transaction ID
     String transactionId = transactionsRef.push().key!;
+    int currentTime = DateTime.now().millisecondsSinceEpoch;
 
     // Convert total amount to double
     double totalAmount = _calculateTotal();
+    String categoryName = expense_category_controller.text.trim();
 
-    // Prepare expense data
-    Map<String, dynamic> expenseData = {
+    // Prepare the main transaction data
+    Map<String, dynamic> transactionData = {
       "transactionId": transactionId,
       "type": "expenses",
-      "invoice_no": invoice_no ?? "0",
-      "date": "${time.day}/${time.month}/${time.year}",
-      "expenses_category": expense_category_controller.text.trim(),
       "amount": totalAmount.toString(),
-      "paymentType": selectedPaymentType,
+      "date": "${time.day}/${time.month}/${time.year}",
+      "category": categoryName,
       "description": description_controller.text.trim(),
+      "paymentType": selectedPaymentType,
+      "current_time": currentTime,
+    };
+
+    // Prepare expense data for Transactions node
+    Map<String, dynamic> expenseData = {
+      ...transactionData,
+      "invoice_no": invoice_no ?? "0",
+      "expenses_category": categoryName,
       "Image": image ?? "Null",
     };
 
@@ -226,76 +236,109 @@ class _Expenses extends State<Expenses> {
       "amount": row['amount'],
     }).toList();
 
-    // Save the main expense data in Transactions
-    await transactionsRef.child(transactionId).set(expenseData);
+    try {
+      // 1. First handle the Expense_category update
+      // Check if category already exists
+      DatabaseEvent categoryEvent = await expenseCategoriesRef
+          .orderByChild("category_name")
+          .equalTo(categoryName)
+          .once();
 
-    // Save the items list under the transaction
-    await transactionsRef.child(transactionId).child("items").set(itemsList);
+      if (categoryEvent.snapshot.exists) {
+        // Category exists - update the existing one
+        DataSnapshot snapshot = categoryEvent.snapshot;
+        Map<dynamic, dynamic> values = snapshot.value as Map<dynamic, dynamic>;
+        String categoryId = values.keys.first;
+        double currentTotal = double.tryParse(values[categoryId]["total_amount"].toString()) ?? 0.0;
 
-    // Ensure Cash node exists
-    DatabaseEvent cashEvent = await cashRef.once();
-    if (cashEvent.snapshot.value == null) {
-      await cashRef.set({"total_balance": "0", "Cash_transaction": {}});
-    }
-
-    // Deduct from selected payment type
-    if (selectedPaymentType == "Cash") {
-      // Fetch current Cash balance **outside** Cash_transaction
-      DataSnapshot cashSnapshot = (await cashRef.once()).snapshot;
-      double currentCashBalance = double.tryParse(cashSnapshot.child("total_balance").value.toString()) ?? 0.0;
-      double updatedCashBalance = currentCashBalance - totalAmount;
-
-      // Update total_balance **outside** Cash_transaction
-      await cashRef.update({"total_balance": updatedCashBalance.toString()});
-
-      // Store transaction inside Cash_transaction
-      await cashTransactionRef.child(transactionId).set({
-        "transactionId": transactionId,
-        "type": "expenses",
-        "amount": "-$totalAmount",
-        "date": "${time.day}/${time.month}/${time.year}",
-        "category": expense_category_controller.text.trim(),
-        "description": description_controller.text.trim(),
-        "paymentType": "Cash",
-      });
-
-    } else {
-      // Ensure selected Bank node exists
-      DatabaseReference selectedBankRef = bankAccountsRef.child(selectedPaymentType!);
-      DatabaseEvent bankEvent = await selectedBankRef.once();
-      if (bankEvent.snapshot.value == null) {
-        await selectedBankRef.set({"total_balance": "0"});
+        await expenseCategoriesRef.child(categoryId).update({
+          "total_amount": (currentTotal + totalAmount).toString(),
+          "last_updated": currentTime,
+        });
+      } else {
+        // Category doesn't exist - create new one
+        String categoryId = expenseCategoriesRef.push().key!;
+        await expenseCategoriesRef.child(categoryId).set({
+          "category_name": categoryName,
+          "total_amount": totalAmount.toString(),
+          "created_at": currentTime,
+          "last_updated": currentTime,
+        });
       }
 
-      // Fetch current Bank balance
-      DataSnapshot bankSnapshot = (await selectedBankRef.once()).snapshot;
-      double currentBankBalance = double.tryParse(bankSnapshot.child("total_balance").value.toString()) ?? 0.0;
-      double updatedBankBalance = currentBankBalance - totalAmount;
+      // 2. Save the main transaction data
+      await transactionsRef.child(transactionId).set(expenseData);
+      await transactionsRef.child(transactionId).child("items").set(itemsList);
 
-      // Update total_balance **outside** transactions
-      await selectedBankRef.update({"total_balance": updatedBankBalance.toString()});
+      // 3. Handle payment type specific operations
+      if (selectedPaymentType == "Cash") {
+        // Ensure Cash node exists
+        DatabaseEvent cashEvent = await cashRef.once();
+        if (cashEvent.snapshot.value == null) {
+          await cashRef.set({
+            "total_balance": "0",
+            "Cash_transaction": {}
+          });
+        }
 
-      // Store transaction inside Bank transactions
-      await selectedBankRef.child("transactions").child(transactionId).set({
-        "transactionId": transactionId,
-        "type": "expenses",
-        "amount": "-$totalAmount",
-        "date": "${time.day}/${time.month}/${time.year}",
-        "category": expense_category_controller.text.trim(),
-        "description": description_controller.text.trim(),
-        "paymentType": "Bank",
-      });
+        // Update Cash balance
+        DataSnapshot cashSnapshot = (await cashRef.once()).snapshot;
+        double currentCashBalance = double.tryParse(cashSnapshot.child("total_balance").value.toString()) ?? 0.0;
+        await cashRef.update({"total_balance": (currentCashBalance - totalAmount).toString()});
+
+        await cashTransactionRef.child(transactionId).set({
+          "amount": totalAmount.toString(),
+          "current_time": currentTime,
+          "date": "${time.day}/${time.month}/${time.year}",
+          "transaction": transactionData,
+        });
+      } else {
+        // Handle Bank payment
+        DatabaseReference selectedBankRef = bankAccountsRef.child(selectedPaymentType!);
+        DatabaseEvent bankEvent = await selectedBankRef.once();
+
+        if (bankEvent.snapshot.value == null) {
+          await selectedBankRef.set({
+            "bank_name": selectedPaymentType,
+            "total_balance": "0",
+            "date_added": "${time.day}/${time.month}/${time.year}",
+            "holder_name": "",
+            "ifsc": "",
+            "opening_balance": "0",
+            "Bank_transaction": {},
+            "transactions": {}
+          });
+        }
+
+        DataSnapshot bankSnapshot = (await selectedBankRef.once()).snapshot;
+        double currentBankBalance = double.tryParse(bankSnapshot.child("total_balance").value.toString()) ?? 0.0;
+        await selectedBankRef.update({"total_balance": (currentBankBalance - totalAmount).toString()});
+
+        Map<String, dynamic> bankTransactionData = {
+          ...transactionData,
+          "bank_name": selectedPaymentType,
+        };
+
+        await selectedBankRef.child("Bank_transaction").child(transactionId).set({
+          "amount": totalAmount.toString(),
+          "current_time": currentTime,
+          "date": "${time.day}/${time.month}/${time.year}",
+          "transaction": bankTransactionData,
+        });
+
+        await selectedBankRef.child("transactions").child(transactionId).set(bankTransactionData);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Expense Data & Items Saved Successfully!')),
+      );
+      Navigator.pop(context);
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save expense: $error')),
+      );
     }
-
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Expense Data & Items Saved Successfully!')),
-    );
-    Navigator.pop(context);
   }
-
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
