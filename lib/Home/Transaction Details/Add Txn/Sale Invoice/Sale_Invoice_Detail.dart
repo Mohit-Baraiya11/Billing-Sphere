@@ -342,69 +342,84 @@ class _Sale_Invoice_Detail extends State<Sale_Invoice_Detail> {
 
   Future<void> updatePartyTransaction(
       String userId,
-      String oldPartyId,
-      String newPartyId,
-      double oldAmount,
-      double newAmount,
       String transactionId,
-      String newPartyName) async {
+      String oldPhoneNumber,
+      double oldAmount,
+      String newPhoneNumber,
+      double newAmount) async {
 
     DatabaseReference partiesRef = FirebaseDatabase.instance.ref("users/$userId/Parties");
-    DatabaseReference oldPartyRef = partiesRef.child(oldPartyId);
-    DatabaseReference newPartyRef = partiesRef.child(newPartyId);
+    DatabaseReference oldPartyRef = partiesRef.child(oldPhoneNumber);
+    DatabaseReference newPartyRef = partiesRef.child(newPhoneNumber);
 
     DatabaseEvent oldPartyEvent = await oldPartyRef.once();
     DatabaseEvent newPartyEvent = await newPartyRef.once();
 
+    // 🔹 Fetch transaction data before removing it
+    DatabaseReference oldTransactionRef = oldPartyRef.child("transactions/$transactionId");
+    DatabaseEvent oldTransactionEvent = await oldTransactionRef.once();
+
+    if (!oldTransactionEvent.snapshot.exists) {
+      print("⚠️ Transaction not found in old party!");
+      return;
+    }
+
+    Map<dynamic, dynamic> transactionData = oldTransactionEvent.snapshot.value as Map<dynamic, dynamic>;
+
     if (oldPartyEvent.snapshot.exists) {
-      double oldPartyTotalAmount = double.tryParse(oldPartyEvent.snapshot.child("total_amount").value.toString()) ?? 0.0;
+      Map<dynamic, dynamic> oldPartyData = oldPartyEvent.snapshot.value as Map<dynamic, dynamic>;
 
-      // 🔹 Step 1: Subtract old amount and remove transaction
-      oldPartyTotalAmount -= oldAmount;
-      await oldPartyRef.child("transactions").child(transactionId).remove();
-      await oldPartyRef.child("total_amount").set(oldPartyTotalAmount);
+      // 🔹 Add the old amount back to the old party's total_amount
+      double oldTotalAmount = double.tryParse(oldPartyData["total_amount"].toString()) ?? 0.0;
+      double updatedOldTotal = oldTotalAmount + oldAmount;
 
-      print("✅ Transaction removed from old party.");
+      // 🔹 Remove the transaction from the old party
+      await oldTransactionRef.remove();
+      await oldPartyRef.child("total_amount").set(updatedOldTotal);
 
-      // 🔹 Step 2: Move transaction to new party (if changed)
-      if (oldPartyId != newPartyId) {
-        if (newPartyEvent.snapshot.exists) {
-          // If new party exists, update total_amount and add transaction
-          double newPartyTotalAmount = double.tryParse(newPartyEvent.snapshot.child("total_amount").value.toString()) ?? 0.0;
-          newPartyTotalAmount += newAmount;
+      print("✅ Transaction removed & amount restored in old party.");
+    }
 
-          await newPartyRef.child("transactions").child(transactionId).set(true);
-          await newPartyRef.child("total_amount").set(newPartyTotalAmount);
+    // 🔹 Move transaction to the new party (Check if it exists)
+    double updatedNewTotal = newAmount;
+    String partyName = "";
 
-          print("✅ Transaction moved to existing party.");
-        } else {
-          // If new party doesn't exist, create a new one
-          await newPartyRef.set({
-            "name": newPartyName,
-            "phone": newPartyId,
-            "total_amount": newAmount,
-            "transactions": { transactionId: true },
-          });
+    if (newPartyEvent.snapshot.exists) {
+      Map<dynamic, dynamic> newPartyData = newPartyEvent.snapshot.value as Map<dynamic, dynamic>;
+      double existingNewAmount = double.tryParse(newPartyData["total_amount"].toString()) ?? 0.0;
+      updatedNewTotal += existingNewAmount;
 
-          print("✅ New party created with transaction.");
-        }
-
-        // 🔹 Step 3: Delete old party if no transactions left
-        DatabaseEvent remainingTransactions = await oldPartyRef.child("transactions").once();
-        if (!remainingTransactions.snapshot.exists) {
-          await oldPartyRef.remove();
-          print("✅ Old party deleted (no transactions left).");
-        }
-      } else {
-        // If party didn't change, just update total_amount
-        double updatedTotal = oldPartyTotalAmount + newAmount;
-        await oldPartyRef.child("total_amount").set(updatedTotal);
-        print("✅ Total amount updated in the same party.");
-      }
+      // Preserve existing name if only phone number changed
+      partyName = newPartyData["name"].toString();
     } else {
-      print("⚠️ Old party not found.");
+      // If new party doesn't exist, create new party entry
+      partyName = transactionData["name"] ?? "Unknown"; // Use existing name if available
+      await newPartyRef.set({
+        "name": partyName,
+        "phone": newPhoneNumber,
+        "total_amount": updatedNewTotal,
+        "transactions": {}
+      });
+
+      print("✅ New party created with transaction.");
+    }
+
+    // 🔹 Step 3: Add transaction to the new party with full data
+    await newPartyRef.child("transactions/$transactionId").set(transactionData);
+
+    // 🔹 Update new party's total amount
+    await newPartyRef.child("total_amount").set(updatedNewTotal);
+
+    print("✅ Transaction moved to new party successfully!");
+
+    // 🔹 Step 4: Delete old party if no transactions left
+    DatabaseEvent remainingTransactions = await oldPartyRef.child("transactions").once();
+    if (remainingTransactions.snapshot.value == null) {
+      await oldPartyRef.remove();
+      print("✅ Old party deleted (no transactions left).");
     }
   }
+
 
   void deleteTransaction() async {
     User? user = FirebaseAuth.instance.currentUser;
