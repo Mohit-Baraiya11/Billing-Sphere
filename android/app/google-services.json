@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "199968286312",
+    "firebase_url": "https://billing-sphere-5f24e-default-rtdb.firebaseio.com",
+    "project_id": "billing-sphere-5f24e",
+    "storage_bucket": "billing-sphere-5f24e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:199968286312:android:c89754bdac7180da5c7ddd",
+        "android_client_info": {
+          "package_name": "com.example.billing_sphere"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "199968286312-no842n462p7g0hart4eh0ul5b2aqka27.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.billing_sphere",
+            "certificate_hash": "b7979bcd19dba4eadfd8f1bc753fd6310ddd3a17"
+          }
+        },
+        {
+          "client_id": "199968286312-dj91suf9hk50pm47anhvq500suo4m293.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGS9_9XgP7xTlfgjZCvpQEx69qi-PyzsA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "199968286312-dj91suf9hk50pm47anhvq500suo4m293.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
