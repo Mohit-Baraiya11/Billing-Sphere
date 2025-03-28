@@ -220,74 +220,61 @@ class _Payment_Out_Detail extends State<Payment_Out_Detail> {
 
     DatabaseReference partiesRef = FirebaseDatabase.instance.ref("users/$userId/Parties");
 
-    // 🔹 Adjust old party's total_amount
+    // 🔹 Adjust old party's total_amount and remove transaction
     if (oldPhoneNumber.isNotEmpty) {
       DatabaseReference oldPartyRef = partiesRef.child(oldPhoneNumber);
       DatabaseEvent oldPartyEvent = await oldPartyRef.once();
 
-      if (oldPartyEvent.snapshot.value != null) {
+      if (oldPartyEvent.snapshot.exists) {
         Map<dynamic, dynamic> oldPartyData = oldPartyEvent.snapshot.value as Map<dynamic, dynamic>;
         double existingAmount = double.tryParse(oldPartyData["total_amount"].toString()) ?? 0.0;
-        double newTotal = existingAmount + oldAmount - newAmount;
+        double newTotal = existingAmount - oldAmount; // ✅ Reverse previous amount
 
         await oldPartyRef.update({"total_amount": newTotal.toString()});
 
-        // ✅ Update transaction details in old party
-        await oldPartyRef.child("transactions/$transactionId").update({
-          "transactionId": transactionId,
-          "date": "${time.day}/${time.month}/${time.year}",
-          "amount": newAmount.toString(),
-          "customer": newCustomerName,
-          "phone": newPhoneNumber,
-          "description": description_controller.text,
-          "invoice_no": invoice_no ?? "0",
-          "paymentType": newPaymentType,
-          "received": paid_amount.text,
-          "total_amount": paid_amount.text,
-          "type": "payment-out",
-        });
+        // ✅ Remove transaction from old party
+        await oldPartyRef.child("transactions/$transactionId").remove();
 
-        print("✅ Updated old party transaction successfully!");
+        print("✅ Removed transaction from old party!");
       }
     }
 
-    // 🔹 If phone number changed, move transaction to the new party
-    if (oldPhoneNumber != newPhoneNumber) {
-      DatabaseReference newPartyRef = partiesRef.child(newPhoneNumber);
-      DatabaseEvent newPartyEvent = await newPartyRef.once();
+    // 🔹 Move transaction to new party if phone number changed
+    DatabaseReference newPartyRef = partiesRef.child(newPhoneNumber);
+    DatabaseEvent newPartyEvent = await newPartyRef.once();
 
-      double newTotalAmount = newAmount;
-      if (newPartyEvent.snapshot.value != null) {
-        Map<dynamic, dynamic> newPartyData = newPartyEvent.snapshot.value as Map<dynamic, dynamic>;
-        double existingAmount = double.tryParse(newPartyData["total_amount"].toString()) ?? 0.0;
-        newTotalAmount += existingAmount;
-      }
-
-      // 🔹 Update or create new party
-      await newPartyRef.update({
-        "name": newCustomerName,
-        "phone": newPhoneNumber,
-        "total_amount": newTotalAmount.toString(),
-      });
-
-      // ✅ Add transaction to new party
-      await newPartyRef.child("transactions/$transactionId").set({
-        "transactionId": transactionId,
-        "date": "${time.day}/${time.month}/${time.year}",
-        "amount": newAmount.toString(),
-        "customer": newCustomerName,
-        "phone": newPhoneNumber,
-        "description": description_controller.text,
-        "invoice_no": invoice_no ?? "0",
-        "paymentType": newPaymentType,
-        "received": paid_amount.text,
-        "total_amount": paid_amount.text,
-        "type": "payment-out",
-      });
-
-      print("✅ Moved transaction to new party successfully!");
+    double newTotalAmount = newAmount;
+    if (newPartyEvent.snapshot.exists) {
+      Map<dynamic, dynamic> newPartyData = newPartyEvent.snapshot.value as Map<dynamic, dynamic>;
+      double existingAmount = double.tryParse(newPartyData["total_amount"].toString()) ?? 0.0;
+      newTotalAmount += existingAmount; // ✅ Add new amount
     }
+
+    // ✅ Update or create new party
+    await newPartyRef.update({
+      "name": newCustomerName,
+      "phone": newPhoneNumber,
+      "total_amount": newTotalAmount.toString(),
+    });
+
+    // ✅ Add transaction to new party
+    await newPartyRef.child("transactions/$transactionId").set({
+      "transactionId": transactionId,
+      "date": "${time.day}/${time.month}/${time.year}",
+      "amount": newAmount.toString(),
+      "customer": newCustomerName,
+      "phone": newPhoneNumber,
+      "description": description_controller.text,
+      "invoice_no": invoice_no ?? "0",
+      "paymentType": newPaymentType,
+      "received": paid_amount.text,
+      "total_amount": paid_amount.text,
+      "type": "payment-out",
+    });
+
+    print("✅ Moved transaction to new party successfully!");
   }
+
 
   void deleteTransaction() async {
     User? user = FirebaseAuth.instance.currentUser;

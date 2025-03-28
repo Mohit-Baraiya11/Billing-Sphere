@@ -8,6 +8,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:remixicon/remixicon.dart';
 
@@ -247,6 +248,45 @@ class AddNewSales extends State<Add_new_Sales> {
   }
 
 
+  final DatabaseReference _databaseRef = FirebaseDatabase.instance.ref();
+
+  Future<List<Map<String, dynamic>>> fetchParties(String query) async {
+    List<Map<String, dynamic>> partyList = [];
+    User? user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      print("No user logged in");
+    }
+    else {
+      String userId = user.uid;
+      final snapshot = await _databaseRef.child("users").child(userId).child(
+          "Parties").get();
+
+      if (snapshot.exists && snapshot.value is Map<dynamic, dynamic>) {
+        Map<String, dynamic> parties = Map<String, dynamic>.from(
+            snapshot.value as Map);
+
+        parties.forEach((key, value) {
+          if (value is Map) {
+            final partyData = Map<String, dynamic>.from(value);
+
+            final String name = partyData["name"] ?? "";
+            final String phone = partyData["phone"] ?? "";
+
+            if (name.toLowerCase().contains(query.toLowerCase()) ||
+                phone.contains(query)) {
+              partyList.add({
+                "name": name,
+                "phone": phone,
+              });
+            }
+          }
+        });
+      }
+    }
+
+    return partyList;
+  }
 
   @override
   void initState() {
@@ -408,29 +448,51 @@ class AddNewSales extends State<Add_new_Sales> {
                   padding: EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      TextField(
-                        controller:customer_controller,
-                        onChanged: (String value){
-                          setState(() {
-                            customer_controller.text = value;
-                          });
-                        },
-                        decoration: InputDecoration(
-                          labelText: "Customer",
-                          hintText: "Customer name",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                            borderSide: BorderSide(color: Colors.blue, width: 2.0),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                            borderSide: BorderSide(color: Colors.grey, width: 1.0),
+                      TypeAheadField<Map<String, dynamic>>(
+                        textFieldConfiguration: TextFieldConfiguration(
+                          controller: customer_controller,
+                          decoration: InputDecoration(
+                            labelText: "Customer",
+                            hintText: "Enter customer name",
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.0),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.0),
+                              borderSide: BorderSide(color: Colors.blue, width: 2.0),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8.0),
+                              borderSide: BorderSide(color: Colors.grey, width: 1.0),
+                            ),
                           ),
                         ),
+                        suggestionsCallback: (pattern) async {
+                          List<Map<String, dynamic>> results = await fetchParties(pattern);
+                          return results.isNotEmpty ? results : []; // Returns an empty list if no matches
+                        },
+                        itemBuilder: (context, Map<String, dynamic> suggestion) {
+                          return Material(
+                            color: Colors.white,
+                            child: ListTile(
+                              title: Text(
+                                suggestion["name"],
+                                style: TextStyle(color: Colors.black),
+                              ),
+                              trailing: Text(
+                                suggestion["phone"],
+                                style: TextStyle(color: Colors.black54),
+                              ),
+                            ),
+                          );
+                        },
+                        onSuggestionSelected: (Map<String, dynamic> suggestion) {
+                          customer_controller.text = suggestion["name"];
+                          phonenumber_controller.text = suggestion["phone"];
+                        },
+                        noItemsFoundBuilder: (context) => SizedBox.shrink(), // Hides "No items found"
                       ),
+
                       SizedBox(height: 16),
                       TextField(
                         keyboardType: TextInputType.phone,

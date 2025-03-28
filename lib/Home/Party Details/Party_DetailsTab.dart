@@ -22,6 +22,8 @@ class _PartyDetailsTab extends State<PartyDetailsTab> {
 
   List<Map<String, dynamic>> partyList = [];
 
+  bool isLoading = true; // Track loading state
+
   void fetchPartiesData() async {
     User? user = FirebaseAuth.instance.currentUser;
 
@@ -34,28 +36,30 @@ class _PartyDetailsTab extends State<PartyDetailsTab> {
     DatabaseReference ref = FirebaseDatabase.instance.ref("users/$userId/Parties");
     DatabaseEvent event = await ref.once();
 
+    List<Map<String, dynamic>> fetchedParties = [];
+
     if (event.snapshot.value != null && event.snapshot.value is Map) {
       Map<dynamic, dynamic> data = event.snapshot.value as Map<dynamic, dynamic>;
-
-      List<Map<String, dynamic>> fetchedParties = [];
 
       data.forEach((key, value) {
         String latestDate = "No Date";
         double totalAmount = double.tryParse(value['total_amount'].toString()) ?? 0.0;
 
-        // Check if transactions exist
+        // Check if transactions exist and find latest transaction date
         if (value.containsKey("transactions") && value["transactions"] is Map) {
           Map<dynamic, dynamic> transactions = value["transactions"];
           int latestTime = 0;
 
           transactions.forEach((txnKey, txnValue) {
-            int txnTime = txnValue['current_time'] ?? 0;
-            String txnDate = txnValue['date'] ?? "No Date";
+            if (txnValue is Map && txnValue.containsKey("current_time")) {
+              int txnTime = txnValue['current_time'] ?? 0;
+              String txnDate = txnValue['date'] ?? "No Date";
 
-            // Find the latest transaction
-            if (txnTime > latestTime) {
-              latestTime = txnTime;
-              latestDate = txnDate;
+              // Find the latest transaction
+              if (txnTime > latestTime) {
+                latestTime = txnTime;
+                latestDate = txnDate;
+              }
             }
           });
         }
@@ -66,19 +70,20 @@ class _PartyDetailsTab extends State<PartyDetailsTab> {
           "total_amount": totalAmount,
         });
       });
-
-      setState(() {
-        partyList = fetchedParties;
-      });
     }
-  }
 
+    setState(() {
+      partyList = fetchedParties;
+      isLoading = false; // Stop loading
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     fetchPartiesData();
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +152,13 @@ class _PartyDetailsTab extends State<PartyDetailsTab> {
             Expanded(
               child: Stack(
                 children: [
-                  ListView.builder(
+                  isLoading
+                      ? Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.black, // Black loading indicator
+                    ),
+                  )
+                      : ListView.builder(
                     itemCount: partyList.length,
                     itemBuilder: (context, index) {
                       var party = partyList[index];
@@ -174,7 +185,7 @@ class _PartyDetailsTab extends State<PartyDetailsTab> {
                               children: [
                                 Text(
                                   "₹ ${party["total_amount"].toStringAsFixed(2)}",
-                                  style: TextStyle(fontSize: 13, color: isPositive ? Color(0xFF38C782): Color(0xFFE03537)),
+                                  style: TextStyle(fontSize: 13, color: isPositive ? Color(0xFF38C782) : Color(0xFFE03537)),
                                 ),
                                 Text(
                                   isPositive ? "You'll get" : "You'll give",
@@ -186,7 +197,7 @@ class _PartyDetailsTab extends State<PartyDetailsTab> {
                         ),
                       );
                     },
-                  ),
+                  )
                 ],
               ),
             ),

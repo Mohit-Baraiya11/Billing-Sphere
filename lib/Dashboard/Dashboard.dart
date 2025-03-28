@@ -778,6 +778,7 @@ class _DashboardState extends State<Dashboard> {
                 SizedBox(height: 20),
 
                 // Expenses Section
+                if(expenseCategories.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(

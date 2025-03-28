@@ -270,7 +270,14 @@ class _Purchase_Details extends State<Purchase_Details> {
     }
   }
 
-  Future<void> updatePartyTransaction(String userId, String partyId, double oldBalanceDue, double newBalanceDue, double newPaidAmount) async {
+  Future<void> updatePartyTransaction(
+      String userId,
+      String partyId,
+      double oldBalanceDue,
+      double newBalanceDue,
+      double newPaidAmount) async
+  {
+
     DatabaseReference partyRef = FirebaseDatabase.instance.ref("users/$userId/Parties/$partyId");
     DatabaseEvent partyEvent = await partyRef.once();
 
@@ -281,9 +288,9 @@ class _Purchase_Details extends State<Purchase_Details> {
       double existingPartyAmount = double.tryParse(partyData["total_amount"].toString()) ?? 0.0;
 
       // ✅ Reverse the effect of the previous transaction
-      totalPartyAmount = existingPartyAmount + oldBalanceDue;
+      totalPartyAmount = existingPartyAmount - oldBalanceDue;
 
-      // ✅ Apply the new balance_due (Correction: Now adding instead of subtracting)
+      // ✅ Apply the new balance_due
       totalPartyAmount += newBalanceDue;
     } else {
       // ✅ If it's a new party, set the balance_due directly
@@ -292,36 +299,10 @@ class _Purchase_Details extends State<Purchase_Details> {
 
     // ✅ Update Party Details
     await partyRef.update({
-      "name": customer_controller.text,
-      "phone": partyId,
       "total_amount": totalPartyAmount.toString(),
     });
-
-    // ✅ Ensure transaction exists before updating
-    DatabaseReference transactionRef = partyRef.child("transactions/${widget.transactionId}");
-    DatabaseEvent transactionEvent = await transactionRef.once();
-
-    Map<String, dynamic> transactionData = {
-      "party_name": customer_controller.text,
-      "phone": partyId,
-      "total_amount": total_amount.text,
-      "paid_amount": newPaidAmount.toString(),
-      "balance_due": newBalanceDue.toString(),
-      "description": description_controller.text,
-      "invoice_no": invoice_no,
-      "paymentType": selectedPaymentType,
-      "Image": image ?? "Null",
-      "items": existingItems
-    };
-
-    if (transactionEvent.snapshot.exists) {
-      // ✅ Update existing transaction under Parties/{phone}/transactions
-      await transactionRef.update(transactionData);
-    } else {
-      // ✅ If transaction doesn't exist, create it
-      await transactionRef.set(transactionData);
-    }
   }
+
 
 
   void deleteTransaction() async {
