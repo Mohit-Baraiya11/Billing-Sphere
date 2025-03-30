@@ -59,67 +59,78 @@ class _AddItemsToSaleState extends State<Add_Items_to_Sale> {
   TextEditingController totalAmountController = TextEditingController();
 
 
+  String? selectedItemId;
+  double? openingStock;
+
   Future<List<Map<String, dynamic>>> fetchItems(String query) async {
     List<Map<String, dynamic>> itemList = [];
-    final snapshot = await _databaseRef.get();
+
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return itemList;
+    String userId = user.uid;
+
+    // Correct path: users/{userId}/Items (directly under user)
+    final snapshot = await _databaseRef.child("users/$userId/Items").get();
 
     if (snapshot.exists && snapshot.value is Map<dynamic, dynamic>) {
-      Map<String, dynamic> items = Map<String, dynamic>.from(snapshot.value as Map);
+      Map<dynamic, dynamic> items = Map<dynamic, dynamic>.from(snapshot.value as Map);
 
       items.forEach((key, value) {
-        if (value is Map) {
-          final itemData = Map<String, dynamic>.from(value);
-          final basicInfo = itemData["basicInfo"] is Map
-              ? Map<String, dynamic>.from(itemData["basicInfo"])
+        if (value is Map<dynamic, dynamic>) {
+          final basicInfo = value["basicInfo"] is Map<dynamic, dynamic>
+              ? Map<String, dynamic>.from(value["basicInfo"])
               : {};
 
+          // Match 'itemName' (now correctly spelled in your database)
           if (basicInfo.containsKey("itemName") &&
               basicInfo["itemName"].toString().toLowerCase().contains(query.toLowerCase())) {
-
-            final pricing = itemData["pricing"] is Map
-                ? Map<String, dynamic>.from(itemData["pricing"])
-                : {};
-            final discount = pricing["discount"] is Map
-                ? Map<String, dynamic>.from(pricing["discount"])
-                : {"type": "", "value": 0};
-            final tax = pricing["tax"] is Map
-                ? Map<String, dynamic>.from(pricing["tax"])
-                : {"type": "", "rate": 0};
-            final stock = itemData["stock"] is Map
-                ? Map<String, dynamic>.from(itemData["stock"])
-                : {"pricePerUnit": 0};
-
             itemList.add({
               "id": key,
               "itemName": basicInfo["itemName"] ?? "",
-              "purchasePrice": pricing["purchasePrice"] ?? 0,
-              "salePrice": pricing["salePrice"] ?? 0,
-              "discountType": discount["type"] ?? "",
-              "discountValue": discount["value"] ?? 0,
-              "taxType": tax["type"] ?? "",
-              "taxRate": tax["rate"] ?? 0,
-              "unitPrice": stock["pricePerUnit"] ?? 0,
+              "purchasePrice": value["pricing"]?["purchasePrice"] ?? 0,
+              "salePrice": value["pricing"]?["salePrice"] ?? 0,
+              "discountValue": value["pricing"]?["discount"] ?? 0,
+              "openingStock": value["stock"]?["openingStock"] ?? 0,
             });
           }
         }
       });
     }
 
+    // Show "Add New Item" only if no matches found
+    if (itemList.isEmpty && query.isNotEmpty) {
+      return [{"itemName": "Add New Item", "isNew": true}];
+    }
+
     return itemList;
   }
   void _fillItemFields(Map<String, dynamic> itemData) {
-    itemNameController.text = itemData["itemName"] ?? "";
-    rateController.text = itemData["salePrice"]?.toString() ?? "0";
-    taxOption = itemData["taxType"] ?? "";
+    setState(() {
+      itemNameController.text = itemData["itemName"] ?? "";
+      rateController.text = itemData["salePrice"]?.toString() ?? "0";
+      discountController.text = itemData["discountValue"]?.toString() ?? "0";
 
-    // Fix: Convert discount value to a string safely
-    discountController.text = itemData["discountValue"] != null
-        ? itemData["discountValue"].toString()
-        : "0"; // Default to "0" if null
-
-    print("Discount Value: ${discountController.text}"); // Debugging print
-    setState(() {});
+      selectedItemId = itemData["id"]; // Store selected item ID
+      openingStock = itemData["openingStock"] ?? 0; // Fetch initial stock
+    });
   }
+  void _checkStockAvailability() {
+    if (selectedItemId == null || quantityController.text.isEmpty) {
+      return; // No item selected or quantity empty
+    }
+
+    double selectedQuantity = double.tryParse(quantityController.text) ?? 0;
+    if (selectedQuantity <= 0) {
+      return; // Invalid quantity
+    }
+
+    if (selectedQuantity > openingStock!) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Not enough stock available for this item"))
+      );
+    }
+  }
+
   Future<bool> checkIfItemExists(String itemName) async {
     final snapshot = await _databaseRef.get();
 
@@ -312,20 +323,8 @@ class _AddItemsToSaleState extends State<Add_Items_to_Sale> {
                     SizedBox(
                       height: 50,
                       child: TypeAheadField<Map<String, dynamic>>(
-                        textFieldConfiguration: TextFieldConfiguration(
-                          controller: itemNameController,
-                          decoration: InputDecoration(
-                            labelText: "Item Name",
-                            hintText: "e.g. Chocolate Cake",
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(4.0)),
-                          ),
-                        ),
                         suggestionsCallback: (pattern) async {
-                          var items = await fetchItems(pattern);
-                          if (items.isEmpty) {
-                            return [{"itemName": "Add New Item", "isNew": true}];
-                          }
-                          return items;
+                          return await fetchItems(pattern);
                         },
                         itemBuilder: (context, suggestion) {
                           return ListTile(
@@ -339,6 +338,14 @@ class _AddItemsToSaleState extends State<Add_Items_to_Sale> {
                             _fillItemFields(suggestion);
                           }
                         },
+                        textFieldConfiguration: TextFieldConfiguration(
+                          controller: itemNameController,
+                          decoration: InputDecoration(
+                            labelText: "Item Name",
+                            hintText: "e.g. Chocolate Cake",
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(4.0)),
+                          ),
+                        ),
                       ),
                     ),
                     SizedBox(height: 20),
@@ -348,6 +355,11 @@ class _AddItemsToSaleState extends State<Add_Items_to_Sale> {
                           child: SizedBox(
                             height: 50,
                             child: TextField(
+                              onChanged: (value){
+                                setState(() {
+                                  _checkStockAvailability();
+                                });
+                              },
                               controller: quantityController,
                               keyboardType: TextInputType.number,
                               decoration: InputDecoration(

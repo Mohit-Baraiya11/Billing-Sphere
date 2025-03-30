@@ -1,4 +1,5 @@
 import 'package:billing_sphere/Compony%20Detail%20Page/Business_Details.dart';
+import 'package:billing_sphere/Dashboard/Bank/Bank_account_list.dart';
 import 'package:billing_sphere/Home/Transaction%20Details/Show%20All/profit&loss.dart';
 import 'package:billing_sphere/Menu/Reminder.dart';
 import 'package:billing_sphere/Menu/to_do_list.dart';
@@ -19,84 +20,153 @@ class _Menu extends State<Menu>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue[50], // Light blue background
+      backgroundColor: Colors.blue[50],
       body: Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Container(
-          padding: EdgeInsets.all(10),
-          height: 350,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          width: double.infinity,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "My Business",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        child: Column(
+          children: [
+            Container(
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
               ),
-              SizedBox(height: 10),
+              width: double.infinity,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "My Business",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+                  Divider(color: Colors.grey.shade200,thickness: 1,),
 
-              //To do list
-              ListTile(
-                title: Text('To do list', style: TextStyle(fontSize: 15)),
-                leading: Icon(FlutterRemix.file_list_3_line, color: Colors.black),
-                trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
-                onTap: () {
-                  Navigator.push(context,MaterialPageRoute(builder: (context)=>To_do_list()));
-                },
+                  //To do list
+                  ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    title: Text('To do list', style: TextStyle(fontSize: 15)),
+                    leading: Icon(FlutterRemix.file_list_3_line, color: Colors.black),
+                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    onTap: () {
+                      Navigator.push(context,MaterialPageRoute(builder: (context)=>To_do_list()));
+                    },
+                  ),
+                  Divider(color: Colors.grey.shade200,thickness: 1,),
+
+                  //Reminder
+                  ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    title: Text('Reminder', style: TextStyle(fontSize: 15)),
+                    leading: Icon(Remix.alarm_fill, color: Colors.black),
+                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context)=>Reminder()));
+                    },
+                  ),
+                  Divider(color: Colors.grey.shade200,thickness: 1,),
+
+
+                  /// Reports
+                  ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    title: Text('Reports', style: TextStyle(fontSize: 15)),
+                    leading: Icon(FlutterRemix.file_list_line, color: Colors.black),
+                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context)=>ReportPage()));
+                    },
+                  ),
+                  Divider(color: Colors.grey.shade200,thickness: 1,),
+
+
+
+                  ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    title: Text('Business Profile', style: TextStyle(fontSize: 15)),
+                    leading: Icon(FlutterRemix.profile_line, color: Colors.black),
+                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    onTap: () {
+                      Navigator.push(context,MaterialPageRoute(builder: (context)=>Business_Details()));
+                    },
+                  ),
+                  Divider(color: Colors.grey.shade200,thickness: 1,),
+
+
+                  ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    title: Text('Profit & Loss', style: TextStyle(fontSize: 15)),
+                    leading: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Icon(Icons.trending_up, size: 40), // Profit Icon
+                        Icon(Icons.trending_down,size: 40), // Loss Icon
+                      ],
+                    ),
+                      trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    onTap: () {
+                      Navigator.push(context,MaterialPageRoute(builder: (context)=>Profit_and_loss()));
+                    },
+                  ),
+
+
+
+                ],
               ),
+            ),
+            SizedBox(height: 10,),
 
-              //Reminder
-              ListTile(
-                title: Text('Reminder', style: TextStyle(fontSize: 15)),
-                leading: Icon(Remix.alarm_fill, color: Colors.black),
-                trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
-                onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context)=>Reminder()));
-                },
+            Container(
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
               ),
+              width: double.infinity,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Cash & Bank",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+                  Divider(color: Colors.grey.shade200,thickness: 1,),
 
-              /// Reports
-              ListTile(
-                title: Text('Reports', style: TextStyle(fontSize: 15)),
-                leading: Icon(FlutterRemix.file_list_line, color: Colors.black),
-                trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
-                onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context)=>ReportPage()));
-                },
+                  //To do list
+                  ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    title: Text('Bank Account', style: TextStyle(fontSize: 15)),
+                    leading: Icon(Remix.bank_line, color: Colors.black),
+                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    onTap: () {
+                      Navigator.push(context,MaterialPageRoute(builder: (context)=>Bank_Account_List()));
+                    },
+                  ),
+                  Divider(color: Colors.grey.shade200,thickness: 1,),
+
+                  //Reminder
+                  ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    title: Text('Cash in Hand', style: TextStyle(fontSize: 15)),
+                    leading: Icon(Remix.cash_line, color: Colors.black),
+                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context)=>Reminder()));
+                    },
+                  ),
+                  Divider(color: Colors.grey.shade200,thickness: 1,),
+                ],
               ),
-
-
-              ListTile(
-                title: Text('Business Profile', style: TextStyle(fontSize: 15)),
-                leading: Icon(FlutterRemix.profile_line, color: Colors.black),
-                trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
-                onTap: () {
-                  Navigator.push(context,MaterialPageRoute(builder: (context)=>Business_Details()));
-                },
-              ),
-
-              ListTile(
-                title: Text('Profit & Loss', style: TextStyle(fontSize: 15)),
-                leading: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Icon(Icons.trending_up, size: 40), // Profit Icon
-                    Icon(Icons.trending_down,size: 40), // Loss Icon
-                  ],
-                ),
-                  trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
-                onTap: () {
-                  Navigator.push(context,MaterialPageRoute(builder: (context)=>Profit_and_loss()));
-                },
-              ),
-
-
-            ],
-          ),
+            )
+          ],
         ),
       ),
     );

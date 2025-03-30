@@ -288,6 +288,47 @@ class AddNewSales extends State<Add_new_Sales> {
     return partyList;
   }
 
+
+  Future<void> _updateStockOnSave() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return; // User not logged in
+    }
+    String userId = user.uid;
+
+    for (var item in addedItems) {
+      String itemId = item["id"];
+      double selectedQuantity = double.tryParse(item["quantity"].toString()) ?? 0;
+
+      if (selectedQuantity <= 0) continue; // Skip if invalid quantity
+
+      // Fetch current stock from Firebase
+      DataSnapshot snapshot = await _databaseRef.child("users/$userId/Items/$itemId/stock/openingStock").get();
+
+      if (snapshot.exists) {
+        double currentStock = double.tryParse(snapshot.value.toString()) ?? 0;
+
+        double newStock = currentStock - selectedQuantity;
+        if (newStock < 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Not enough stock for ${item['itemName']}"))
+          );
+          return; // Stop updating if stock is insufficient
+        }
+
+        // Update stock in Firebase
+        await _databaseRef.child("users/$userId/Items/$itemId/stock").update({
+          "openingStock": newStock,
+        });
+      }
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Stock updated successfully"))
+    );
+  }
+
+
   @override
   void initState() {
     super.initState();
@@ -324,11 +365,14 @@ class AddNewSales extends State<Add_new_Sales> {
          rightButtonText: 'save',
          leftButtonColor: Colors.white,
          rightButtonColor: Colors.blueAccent,
-         onLeftButtonPressed: (){},
+         onLeftButtonPressed: (){
+           Navigator.pop(context);
+         },
          onRightButtonPressed: ()async{
            User? user = FirebaseAuth.instance.currentUser;
            if (user != null) {
              await saveSaleData(user.uid);
+             _updateStockOnSave();
            } else {
              ScaffoldMessenger.of(context).showSnackBar(
                SnackBar(content: Text('User not logged in!')),
