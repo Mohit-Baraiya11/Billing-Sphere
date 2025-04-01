@@ -89,12 +89,16 @@ class _ItemsShowState extends State<Items_show> {
               Center(child: CircularProgressIndicator())
             else if (_items.isEmpty)
               Center(
-                child: Text(
-                  "There are no items added",
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.grey,
-                  ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                        child: Image.asset("Assets/Gif/not_found.gif")
+                    ),
+                    Text(
+                      "There are no items added", style: TextStyle(fontSize: 16,color: Colors.blue),
+                    ),
+                  ],
                 ),
               )
             else

@@ -95,27 +95,6 @@ class _Menu extends State<Menu>
                     },
                   ),
                   Divider(color: Colors.grey.shade200,thickness: 1,),
-
-
-                  ListTile(
-                    dense: true,
-                    visualDensity: VisualDensity.compact,
-                    title: Text('Profit & Loss', style: TextStyle(fontSize: 15)),
-                    leading: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Icon(Icons.trending_up, size: 40), // Profit Icon
-                        Icon(Icons.trending_down,size: 40), // Loss Icon
-                      ],
-                    ),
-                      trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
-                    onTap: () {
-                      Navigator.push(context,MaterialPageRoute(builder: (context)=>Profit_and_loss()));
-                    },
-                  ),
-
-
-
                 ],
               ),
             ),
@@ -163,6 +142,17 @@ class _Menu extends State<Menu>
                     },
                   ),
                   Divider(color: Colors.grey.shade200,thickness: 1,),
+
+                  ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    title: Text('Log Out', style: TextStyle(fontSize: 15)),
+                    leading: Icon(Remix.logout_circle_line,),
+                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    onTap: () {
+                      Navigator.push(context,MaterialPageRoute(builder: (context)=>Profit_and_loss()));
+                    },
+                  ),
                 ],
               ),
             )

@@ -20,8 +20,6 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -29,7 +27,6 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter_remix/flutter_remix.dart';
 import 'package:printing/printing.dart';
 import 'package:remixicon/remixicon.dart';
-import 'package:share_plus/share_plus.dart';
 
 class TransactionDetailsTab extends StatefulWidget
 {
@@ -356,109 +353,103 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.blue.shade50,
       body: Container(
         color: Colors.blue.shade50,
         child: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(10.0),
-              child: Column(
-                children: [
-                  // Quick Links Section
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    padding: EdgeInsets.only(top: 8.0),
-                    child: Column(
-                      children: [
-                        Container(
-                          alignment: Alignment.centerLeft,
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 35, bottom: 7),
-                            child: Text(
-                              "Quick Links",
-                              style: TextStyle(fontSize: 15),
+            SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(10.0),
+                child: Column(
+                  children: [
+                    // Quick Links Section
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: EdgeInsets.only(top: 8.0),
+                      child: Column(
+                        children: [
+                          Container(
+                            alignment: Alignment.centerLeft,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 35, bottom: 7),
+                              child: Text(
+                                "Quick Links",
+                                style: TextStyle(fontSize: 15),
+                              ),
                             ),
                           ),
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            //Add Txn
-                            QuickLink(
-                              icon: Remix.file_add_line,
-                              backgroundColor: Colors.redAccent,
-                              label: "Add Txn",
-                              onTap: () {
-                                pop_up_modal(context);
-                              },
-                            ),
-
-                            //Sale Report
-                            QuickLink(
-                              icon: Remix.file_chart_line,
-                              label: "Sale Report",
-                              backgroundColor: Colors.lightBlue,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (context) => Sale_Report()),
-                                );
-                              },
-                            ),
-
-                            //Show all
-                            QuickLink(
-                              icon: Remix.arrow_right_circle_line,
-                              label: "Show All",
-                              backgroundColor: Colors.lightBlue,
-                              onTap: () {
-                                ShowAll(context);
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(height: 10),
-
-
-                  //searchbaar
-                  if(transactions.isNotEmpty)
-                  Container(
-                      height: 40,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        color: Colors.white,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              QuickLink(
+                                icon: Remix.secure_payment_fill,
+                                backgroundColor: Colors.redAccent,
+                                label: "Add Txn",
+                                onTap: () {
+                                  pop_up_modal(context);
+                                },
+                              ),
+                              QuickLink(
+                                icon: Remix.file_chart_line,
+                                label: "Sale Report",
+                                backgroundColor: Colors.lightBlue,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => Sale_Report()),
+                                  );
+                                },
+                              ),
+                              QuickLink(
+                                icon: Remix.arrow_right_circle_line,
+                                label: "Show All",
+                                backgroundColor: Colors.lightBlue,
+                                onTap: () {
+                                  ShowAll(context);
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              decoration: InputDecoration(
-                                hintText: "Search for transaction",
-                                hintStyle:
-                                TextStyle(fontSize: 13, color: Colors.grey),
-                                prefixIcon: Icon(
-                                  Remix.search_line,
-                                  color: Colors.blue,
-                                ),
-                                suffixIcon:IconButton(
-                                  onPressed: () {
-                                    showModalBottomSheet(
-                                      context: context,
-                                      backgroundColor: Colors.white,
-                                      isScrollControlled: true,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                                      ),
-                                      builder: (context) {
-                                        return Container(
-                                            height:MediaQuery.of(context).size.height*0.5,
+                    ),
+                    SizedBox(height: 10),
+
+                    // Search bar
+                    if (transactions.isNotEmpty)
+                      Container(
+                        height: 40,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          color: Colors.white,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                decoration: InputDecoration(
+                                  hintText: "Search for transaction",
+                                  hintStyle: TextStyle(fontSize: 13, color: Colors.grey),
+                                  prefixIcon: Icon(
+                                    Remix.search_line,
+                                    color: Colors.blue,
+                                  ),
+                                  suffixIcon: IconButton(
+                                    onPressed: () {
+                                      showModalBottomSheet(
+                                        context: context,
+                                        backgroundColor: Colors.white,
+                                        isScrollControlled: true,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                                        ),
+                                        builder: (context) {
+                                          return Container(
+                                            height: MediaQuery.of(context).size.height * 0.5,
                                             child: StatefulBuilder(
                                               builder: (context, setModalState) {
                                                 return Stack(
@@ -506,7 +497,6 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                                                       print(filter_apply);
                                                                     });
                                                                   },
-
                                                                 );
                                                               }).toList(),
                                                             ),
@@ -533,10 +523,9 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                                               onPressed: () {
                                                                 setModalState(() {
                                                                   filterOptions.updateAll((key, value) => false);
-                                                                  filter_apply.clear(); // Clear the applied filters list
+                                                                  filter_apply.clear();
                                                                 });
                                                               },
-
                                                               child: Text(
                                                                 "Clear",
                                                                 style: TextStyle(color: Colors.black),
@@ -569,320 +558,315 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                                 );
                                               },
                                             ),
-                                        );
-                                      },
-                                    );
-                                  },
-
-                                  icon: Icon(Remix.filter_2_line, color: Colors.blue,),
-                                ),
-                                border: OutlineInputBorder(
-                                  borderSide: BorderSide.none,
-                                  borderRadius: BorderRadius.circular(8),
+                                          );
+                                        },
+                                      );
+                                    },
+                                    icon: Icon(Remix.filter_2_line, color: Colors.blue),
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderSide: BorderSide.none,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  SizedBox(height: 10),
+                    SizedBox(height: 10),
 
-                  // Transactions List Section
-                  Expanded(
-                    child: isLoading
-                        ?Center(child: CircularProgressIndicator())
+                    // Transactions List Section
+                    isLoading
+                        ? Center(child: CircularProgressIndicator())
                         : transactions.isEmpty
                         ? Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                height: 100,
-                                width: 100,
-                                child: Image.asset("Assets/Images/note.png"),
-                              ),
-                              const Text(
-                                "Hey! You have not added any transactions yet.\nAdd your first transaction now.",
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 20),
-                            ],
-                          )
-                        : ListView.builder(
-                      itemCount: transactions
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          height: 100,
+                          width: 100,
+                          child: Image.asset("Assets/Images/note.png"),
+                        ),
+                        const Text(
+                          "Hey! You have not added any transactions yet.\nAdd your first transaction now.",
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    )
+                        : Column(
+                      children: transactions
                           .where((transaction) =>
                       filter_apply.isEmpty || filter_apply.contains(transaction["transactionType"]))
-                          .length,
-                      itemBuilder: (context, index) {
-                        final filteredTransactions = transactions
-                            .where((transaction) =>
-                        filter_apply.isEmpty || filter_apply.contains(transaction["transactionType"]))
-                            .toList();
-
-                        if (filteredTransactions.isEmpty) {
-                          return Center(
-                            child: Text(
-                              "No transactions found",
-                              style: TextStyle(fontSize: 16, color: Colors.grey),
+                          .map((transaction) => GestureDetector(
+                        onTap: () {
+                          if (transaction["transactionType"] == "payment-in") {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) =>
+                                        Payment_in_Detail(transactionId: transaction["id"])));
+                          } else if (transaction["transactionType"] == "sale") {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) =>
+                                        Sale_Invoice_Detail(transactionId: transaction["id"])));
+                          } else if (transaction["transactionType"] == "purchase") {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) =>
+                                        Purchase_Details(transactionId: transaction["id"])));
+                          } else if (transaction["transactionType"] == "payment-out") {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) =>
+                                        Payment_Out_Detail(transactionId: transaction["id"])));
+                          } else if (transaction["transactionType"] == "expenses") {
+                            Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) =>
+                                        Expenses_Details(transactionId: transaction["id"])));
+                          }
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 10.0),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.grey.withOpacity(0.2),
+                                  spreadRadius: 2,
+                                  blurRadius: 5,
+                                  offset: Offset(0, 3),
+                                ),
+                              ],
                             ),
-                          );
-                        }
-
-                        final transaction = filteredTransactions[index];
-
-                        return GestureDetector(
-                          onTap: () {
-                            if (transaction["transactionType"] == "payment-in") {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => Payment_in_Detail(transactionId: transaction["id"])));
-                            } else if (transaction["transactionType"] == "sale") {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => Sale_Invoice_Detail(transactionId: transaction["id"])));
-                            } else if (transaction["transactionType"] == "purchase") {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => Purchase_Details(transactionId: transaction["id"])));
-                            } else if (transaction["transactionType"] == "payment-out") {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => Payment_Out_Detail(transactionId: transaction["id"])));
-                            } else if (transaction["transactionType"] == "expenses") {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => Expenses_Details(transactionId: transaction["id"])));
-                            }
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 10.0),
-                            child: Container(
-                              padding: EdgeInsets.symmetric(horizontal: 16,vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.grey.withOpacity(0.2),
-                                    spreadRadius: 2,
-                                    blurRadius: 5,
-                                    offset: Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        transaction["name"],
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w400,
-                                        ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      transaction["name"],
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w400,
                                       ),
-                                      Text(
-                                        transaction["date"],
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  SizedBox(height: 8),
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: transaction["transactionType"] == "payment-in"
-                                          ? Color(0xFFC0F1E1)
-                                          : transaction["transactionType"] == "sale"
-                                          ? Color(0xFFC0F1E1)
-                                          : transaction["transactionType"] == "purchase"
-                                          ? Colors.deepOrange.shade50
-                                          : transaction["transactionType"] == "payment-out"
-                                          ? Colors.deepOrange.shade50
-                                          : transaction["transactionType"] == "expenses"
-                                          ? Colors.purple.shade100
-                                          : Color(0xFFC0F1E1),
-                                      borderRadius: BorderRadius.circular(5),
                                     ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
-                                      child: Text(
-                                        transaction["transactionType"],
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: transaction["transactionType"] == "payment-in"
-                                              ? Color(0xFF38C782)
-                                              : transaction["transactionType"] == "sale"
-                                              ? Colors.green
-                                              : transaction["transactionType"] == "purchase"
-                                              ? Colors.deepOrange
-                                              : transaction["transactionType"] == "payment-out"
-                                              ? Colors.deepOrangeAccent
-                                              : transaction["transactionType"] == "expenses"
-                                              ? Colors.purple
-                                              : Color(0xFFC0F1E1),
-                                        ),
+                                    Text(
+                                      transaction["date"],
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: 8),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: transaction["transactionType"] == "payment-in"
+                                        ? Color(0xFFC0F1E1)
+                                        : transaction["transactionType"] == "sale"
+                                        ? Color(0xFFC0F1E1)
+                                        : transaction["transactionType"] == "purchase"
+                                        ? Colors.deepOrange.shade50
+                                        : transaction["transactionType"] == "payment-out"
+                                        ? Colors.deepOrange.shade50
+                                        : transaction["transactionType"] == "expenses"
+                                        ? Colors.purple.shade100
+                                        : Color(0xFFC0F1E1),
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
+                                    child: Text(
+                                      transaction["transactionType"],
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: transaction["transactionType"] == "payment-in"
+                                            ? Color(0xFF38C782)
+                                            : transaction["transactionType"] == "sale"
+                                            ? Colors.green
+                                            : transaction["transactionType"] == "purchase"
+                                            ? Colors.deepOrange
+                                            : transaction["transactionType"] == "payment-out"
+                                            ? Colors.deepOrangeAccent
+                                            : transaction["transactionType"] == "expenses"
+                                            ? Colors.purple
+                                            : Color(0xFFC0F1E1),
                                       ),
                                     ),
                                   ),
-                                  SizedBox(height: 12),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      SizedBox(
-                                        width: MediaQuery.of(context).size.width*0.4,
-                                        child: Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  "Total",
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey,
-                                                  ),
+                                ),
+                                SizedBox(height: 12),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    SizedBox(
+                                      width: MediaQuery.of(context).size.width * 0.4,
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                "Total",
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey,
                                                 ),
-                                                SizedBox(height: 4),
-                                                Text(
-                                                  "₹ ${transaction["total"]}",
-                                                  style: TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            Column(
-                                              crossAxisAlignment: CrossAxisAlignment.end,
-                                              children: [
-                                                Text(
-                                                  "Unused",
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey,
-                                                  ),
-                                                ),
-                                                SizedBox(height: 4),
-                                                Text(
-                                                  transaction["unused"],
-                                                  style: TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                     IconButton(
-                                          onPressed: (){
-                                            double screenWidth = MediaQuery.of(context).size.width;
-                                            double screenHeight = MediaQuery.of(context).size.height;
-
-                                            showModalBottomSheet(
-                                              backgroundColor: Colors.white,
-                                              context: context,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                                               ),
-                                              builder: (context) {
-                                                return GestureDetector(
-                                                  onTap: () async{
-                                                    if(transaction["transactionType"]=="payment-in") {
-                                                      await generatePaymentInPDF(transaction);
-                                                    }
-                                                  },
-                                                  child: Container(
-                                                    height: screenHeight * 0.16, // Responsive height
-                                                    padding: EdgeInsets.symmetric(
-                                                      horizontal: screenWidth * 0.04,
-                                                      vertical: screenHeight * 0.015,
+                                              SizedBox(height: 4),
+                                              Text(
+                                                "₹ ${transaction["total"]}",
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            children: [
+                                              Text(
+                                                "Unused",
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                              SizedBox(height: 4),
+                                              Text(
+                                                transaction["unused"],
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      onPressed: () {
+                                        double screenWidth = MediaQuery.of(context).size.width;
+                                        double screenHeight = MediaQuery.of(context).size.height;
+
+                                        showModalBottomSheet(
+                                          backgroundColor: Colors.white,
+                                          context: context,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                                          ),
+                                          builder: (context) {
+                                            return GestureDetector(
+                                              onTap: () async {
+                                                if (transaction["transactionType"] == "payment-in") {
+                                                  await generatePaymentInPDF(transaction);
+                                                }
+                                              },
+                                              child: Container(
+                                                height: screenHeight * 0.16,
+                                                padding: EdgeInsets.symmetric(
+                                                  horizontal: screenWidth * 0.04,
+                                                  vertical: screenHeight * 0.015,
+                                                ),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Padding(
+                                                      padding:
+                                                      EdgeInsets.only(bottom: screenHeight * 0.01),
+                                                      child: Text(
+                                                        "Share transaction",
+                                                        style: TextStyle(
+                                                          fontSize: screenWidth * 0.045,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
                                                     ),
-                                                    child: Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                    Row(
                                                       children: [
-                                                        // Share Transaction Header
-                                                        Padding(
-                                                          padding: EdgeInsets.only(bottom: screenHeight * 0.01),
-                                                          child: Text(
-                                                            "Share transaction",
-                                                            style: TextStyle(
-                                                              fontSize: screenWidth * 0.045, // Responsive font size
-                                                              fontWeight: FontWeight.bold,
+                                                        Expanded(
+                                                          child: Padding(
+                                                            padding: EdgeInsets.all(screenWidth * 0.02),
+                                                            child: Container(
+                                                              decoration: BoxDecoration(
+                                                                color: Color(0xFFE03537),
+                                                                borderRadius: BorderRadius.circular(4),
+                                                              ),
+                                                              padding: EdgeInsets.symmetric(
+                                                                horizontal: screenWidth * 0.04,
+                                                                vertical: screenHeight * 0.015,
+                                                              ),
+                                                              child: Row(
+                                                                children: [
+                                                                  Container(
+                                                                    height: screenHeight * 0.04,
+                                                                    width: screenHeight * 0.04,
+                                                                    decoration: BoxDecoration(
+                                                                      color: Colors.white,
+                                                                      borderRadius:
+                                                                      BorderRadius.circular(90),
+                                                                    ),
+                                                                    child: Icon(
+                                                                      Remix.file_pdf_2_line,
+                                                                      color: Colors.grey,
+                                                                      size: screenWidth * 0.06,
+                                                                    ),
+                                                                  ),
+                                                                  SizedBox(width: screenWidth * 0.02),
+                                                                  Flexible(
+                                                                    child: Text(
+                                                                      "Share as PDF",
+                                                                      style: TextStyle(
+                                                                        color: Colors.white,
+                                                                        fontSize: screenWidth * 0.035,
+                                                                      ),
+                                                                      overflow: TextOverflow.ellipsis,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
                                                             ),
                                                           ),
                                                         ),
-
-                                                        // Row for Share as Image & Share as PDF
-                                                        Row(
-                                                          children: [
-
-                                                            // Share as PDF
-                                                            Expanded(
-                                                              child: Padding(
-                                                                padding: EdgeInsets.all(screenWidth * 0.02),
-                                                                child: Container(
-                                                                  decoration: BoxDecoration(
-                                                                    color: Color(0xFFE03537),
-                                                                    borderRadius: BorderRadius.circular(4),
-                                                                  ),
-                                                                  padding: EdgeInsets.symmetric(
-                                                                    horizontal: screenWidth * 0.04,
-                                                                    vertical: screenHeight * 0.015,
-                                                                  ),
-                                                                  child: Row(
-                                                                    children: [
-                                                                      Container(
-                                                                        height: screenHeight * 0.04,
-                                                                        width: screenHeight * 0.04,
-                                                                        decoration: BoxDecoration(
-                                                                          color: Colors.white,
-                                                                          borderRadius: BorderRadius.circular(90),
-                                                                        ),
-                                                                        child: Icon(
-                                                                          Remix.file_pdf_2_line,
-                                                                          color: Colors.grey,
-                                                                          size: screenWidth * 0.06,
-                                                                        ),
-                                                                      ),
-                                                                      SizedBox(width: screenWidth * 0.02),
-                                                                      Flexible(
-                                                                        child: Text(
-                                                                          "Share as PDF",
-                                                                          style: TextStyle(
-                                                                            color: Colors.white,
-                                                                            fontSize: screenWidth * 0.035,
-                                                                          ),
-                                                                          overflow: TextOverflow.ellipsis,
-                                                                        ),
-                                                                      ),
-                                                                    ],
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
                                                       ],
                                                     ),
-                                                  ),
-                                                );
-                                              },
+                                                  ],
+                                                ),
+                                              ),
                                             );
                                           },
-                                          icon: Icon(Remix.share_forward_line)
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                                        );
+                                      },
+                                      icon: Icon(Remix.share_forward_line),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
-                        );
-                      },
-                    )
-                    ,
-                  ),
-
-
-                ],
+                        ),
+                      ))
+                          .toList(),
+                    ),
+                    SizedBox(height: 80), // Space for the floating button
+                  ],
+                ),
               ),
             ),
             Positioned(
@@ -894,19 +878,16 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                   style: ElevatedButton.styleFrom(
                     padding: EdgeInsets.all(14),
                     backgroundColor: Colors.red,
-                    // shape: RoundedRectangleBorder(
-                    //   borderRadius: BorderRadius.circular(15),
-                    // ),
                   ),
                   onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context)=>Add_new_Sales()));
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => Add_new_Sales()));
                   },
                   child: SizedBox(
                     width: 130,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Remix.money_rupee_circle_line,color: Colors.white,size: 20,),
+                        Icon(Remix.money_rupee_circle_line, color: Colors.white, size: 20),
                         const SizedBox(width: 8),
                         Text(
                           "Add New Sale",
