@@ -43,7 +43,12 @@ dependencies:
   dotted_border: ^2.0.0
   syncfusion_flutter_charts: ^20.4.48
   flutter_typeahead: ^4.3.7
-
+  pdf: ^3.10.0
+  path_provider: ^2.1.1
+  share_plus: ^7.2.1
+  open_file: ^3.3.1
+  printing: ^5.11.0
+  google_fonts: ^3.0.1
 
   firebase_core: ^3.11.0
   firebase_auth: ^5.4.2

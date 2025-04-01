@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:billing_sphere/Home/Home.dart';
 import 'package:billing_sphere/Home/Sale_Report.dart';
 import 'package:billing_sphere/Home/Transaction%20Details/Add%20Txn/Expense/Expenses.dart';
@@ -18,8 +19,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter_remix/flutter_remix.dart';
+import 'package:printing/printing.dart';
 import 'package:remixicon/remixicon.dart';
+import 'package:share_plus/share_plus.dart';
 
 class TransactionDetailsTab extends StatefulWidget
 {
@@ -67,8 +77,10 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
         data.forEach((transactionId, value) {
           String type = value["type"] ?? "N/A";
           String name = "Unknown";
+          String phone = value["phone"];
           String total = "0.00";
           String unused = "0.00";
+          String description = value["description"];
           String date = value["date"] ?? "N/A";
           int currentTime = value["current_time"] ?? 0; // Get timestamp
 
@@ -99,7 +111,9 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
           fetchedTransactions.add({
             "id": transactionId, // Store the transaction ID
             "name": name,
+            "phone":phone,
             "date": date,
+            "description":description,
             "total": total,
             "unused": unused,
             "transactionType": type,
@@ -123,7 +137,221 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
       }
     });
   }
+  Future<void> generatePaymentInPDF(Map<String, dynamic> transaction) async {
+    final pdf = pw.Document();
+    final font = await PdfGoogleFonts.nunitoSansRegular();
+    final fontBold = await PdfGoogleFonts.nunitoSansBold();
 
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Header
+              pw.Text(
+                'Payment-In',
+                style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                  font: fontBold,
+                ),
+              ),
+              pw.SizedBox(height: 20),
+
+              // Customer Info
+              pw.Text(
+                '${transaction["name"]}',
+                style: pw.TextStyle(
+                  fontSize: 16,
+                  font: fontBold,
+                ),
+              ),
+              pw.Text(
+                'Email: ${transaction["email"] ?? "N/A"}',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  font: font,
+                ),
+              ),
+              pw.SizedBox(height: 20),
+
+              // Receipt Details Table
+              pw.Table(
+                border: pw.TableBorder.all(width: 0.5),
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(1),
+                  1: const pw.FlexColumnWidth(1),
+                },
+                children: [
+                  pw.TableRow(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'Received From:',
+                              style: pw.TextStyle(
+                                font: font,
+                                fontSize: 12,
+                              ),
+                            ),
+                            pw.Text(
+                              transaction["name"] ?? "N/A",
+                              style: pw.TextStyle(
+                                font: fontBold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            pw.Text(
+                              'Contact No: ${transaction["phone"] ?? "N/A"}',
+                              style: pw.TextStyle(
+                                font: font,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'Receipt Details:',
+                              style: pw.TextStyle(
+                                font: font,
+                                fontSize: 12,
+                              ),
+                            ),
+                            pw.Text(
+                              'No: ${transaction["id"]}',
+                              style: pw.TextStyle(
+                                font: fontBold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            pw.Text(
+                              'Date: ${transaction["date"]}',
+                              style: pw.TextStyle(
+                                font: fontBold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // Amount Section
+              pw.Table(
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(3),
+                  1: const pw.FlexColumnWidth(2),
+                },
+                children: [
+                  pw.TableRow(
+                    children: [
+                      pw.Container(), // Empty cell
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            'Received: ₹${transaction["total"]}',
+                            style: pw.TextStyle(
+                              font: fontBold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          pw.SizedBox(height: 10),
+                          pw.Text(
+                            'Amount in Words:',
+                            style: pw.TextStyle(
+                              font: font,
+                              fontSize: 12,
+                            ),
+                          ),
+                          pw.Text(
+                            _amountToWords(double.parse(transaction["total"] ?? "0")),
+                            style: pw.TextStyle(
+                              font: fontBold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // Divider
+              pw.Divider(thickness: 1),
+              pw.SizedBox(height: 10),
+
+              // Description
+              pw.Text(
+                'description:',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 12,
+                ),
+              ),
+              pw.Text(
+                transaction["description"] ?? "Payment received",
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 12,
+                ),
+              ),
+              pw.SizedBox(height: 30),
+
+              // Footer
+              pw.Text(
+                'For ${transaction["businessName"] ?? "Your Business Name"}:',
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 12,
+                ),
+              ),
+              pw.SizedBox(height: 40),
+              pw.Text(
+                'Authorized Signatory',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 12,
+                ),
+              ),
+              pw.SizedBox(height: 20),
+            ],
+          );
+        },
+      ),
+    );
+
+    // Save and open the PDF
+    final directory = await getApplicationDocumentsDirectory();
+    final filePath = '${directory.path}/Payment_In_${transaction["id"]}.pdf';
+    final file = File(filePath);
+    await file.writeAsBytes(await pdf.save());
+    await OpenFile.open(filePath);
+  }
+
+// Helper function to convert amount to words
+  String _amountToWords(double amount) {
+    // Implement your amount to words conversion logic here
+    // You can use a package like 'number_to_words' or implement your own
+    return '${amount.toInt()} Rupees only';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -419,7 +647,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                           child: Padding(
                             padding: const EdgeInsets.only(bottom: 10.0),
                             child: Container(
-                              padding: EdgeInsets.all(15),
+                              padding: EdgeInsets.symmetric(horizontal: 16,vertical: 6),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(10),
@@ -495,47 +723,152 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            "Total",
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey,
+                                      SizedBox(
+                                        width: MediaQuery.of(context).size.width*0.4,
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  "Total",
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey,
+                                                  ),
+                                                ),
+                                                SizedBox(height: 4),
+                                                Text(
+                                                  "₹ ${transaction["total"]}",
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
-                                          ),
-                                          SizedBox(height: 4),
-                                          Text(
-                                            "₹ ${transaction["total"]}",
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  "Unused",
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey,
+                                                  ),
+                                                ),
+                                                SizedBox(height: 4),
+                                                Text(
+                                                  transaction["unused"],
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.end,
-                                        children: [
-                                          Text(
-                                            "Unused",
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                          SizedBox(height: 4),
-                                          Text(
-                                            transaction["unused"],
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
+                                     IconButton(
+                                          onPressed: (){
+                                            double screenWidth = MediaQuery.of(context).size.width;
+                                            double screenHeight = MediaQuery.of(context).size.height;
+
+                                            showModalBottomSheet(
+                                              backgroundColor: Colors.white,
+                                              context: context,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                                              ),
+                                              builder: (context) {
+                                                return GestureDetector(
+                                                  onTap: () async{
+                                                    if(transaction["transactionType"]=="payment-in") {
+                                                      await generatePaymentInPDF(transaction);
+                                                    }
+                                                  },
+                                                  child: Container(
+                                                    height: screenHeight * 0.16, // Responsive height
+                                                    padding: EdgeInsets.symmetric(
+                                                      horizontal: screenWidth * 0.04,
+                                                      vertical: screenHeight * 0.015,
+                                                    ),
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        // Share Transaction Header
+                                                        Padding(
+                                                          padding: EdgeInsets.only(bottom: screenHeight * 0.01),
+                                                          child: Text(
+                                                            "Share transaction",
+                                                            style: TextStyle(
+                                                              fontSize: screenWidth * 0.045, // Responsive font size
+                                                              fontWeight: FontWeight.bold,
+                                                            ),
+                                                          ),
+                                                        ),
+
+                                                        // Row for Share as Image & Share as PDF
+                                                        Row(
+                                                          children: [
+
+                                                            // Share as PDF
+                                                            Expanded(
+                                                              child: Padding(
+                                                                padding: EdgeInsets.all(screenWidth * 0.02),
+                                                                child: Container(
+                                                                  decoration: BoxDecoration(
+                                                                    color: Color(0xFFE03537),
+                                                                    borderRadius: BorderRadius.circular(4),
+                                                                  ),
+                                                                  padding: EdgeInsets.symmetric(
+                                                                    horizontal: screenWidth * 0.04,
+                                                                    vertical: screenHeight * 0.015,
+                                                                  ),
+                                                                  child: Row(
+                                                                    children: [
+                                                                      Container(
+                                                                        height: screenHeight * 0.04,
+                                                                        width: screenHeight * 0.04,
+                                                                        decoration: BoxDecoration(
+                                                                          color: Colors.white,
+                                                                          borderRadius: BorderRadius.circular(90),
+                                                                        ),
+                                                                        child: Icon(
+                                                                          Remix.file_pdf_2_line,
+                                                                          color: Colors.grey,
+                                                                          size: screenWidth * 0.06,
+                                                                        ),
+                                                                      ),
+                                                                      SizedBox(width: screenWidth * 0.02),
+                                                                      Flexible(
+                                                                        child: Text(
+                                                                          "Share as PDF",
+                                                                          style: TextStyle(
+                                                                            color: Colors.white,
+                                                                            fontSize: screenWidth * 0.035,
+                                                                          ),
+                                                                          overflow: TextOverflow.ellipsis,
+                                                                        ),
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            );
+                                          },
+                                          icon: Icon(Remix.share_forward_line)
                                       ),
-                                      SizedBox(width: 9),
                                     ],
                                   ),
                                 ],

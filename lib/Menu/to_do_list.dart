@@ -27,22 +27,23 @@ class _to_do_list extends State<To_do_list> {
         children: [
           Expanded(
             child: DefaultTabController(
-              length: 2,
+              length: 3,
               child: Column(
                 children: [
                   TabBar(
                     indicator: UnderlineTabIndicator(
-                      borderSide: BorderSide(color: Colors.red, width: 3.0),
+                      borderSide: BorderSide(color: Colors.blueAccent, width: 3.0),
                       insets: EdgeInsets.symmetric(horizontal: -50.0),
                     ),
-                    indicatorColor: Colors.red,
+                    indicatorColor: Colors.blueAccent,
                     indicatorWeight: 2.0,
-                    labelColor: Colors.red,
+                    labelColor: Colors.blueAccent,
                     unselectedLabelColor: Colors.grey,
                     labelStyle: TextStyle(fontWeight: FontWeight.bold),
                     tabs: [
-                      Tab(text: 'To do list'),
+                      Tab(text: 'Tasks'),
                       Tab(text: 'Completed'),
+                      Tab(text: 'Missed'),
                     ],
                   ),
                   Expanded(
@@ -50,6 +51,7 @@ class _to_do_list extends State<To_do_list> {
                       children: [
                         buildToDoList(context),
                         buildCompletedList(),
+                        buildMissedList(),
                       ],
                     ),
                   ),
@@ -560,49 +562,160 @@ class _to_do_list extends State<To_do_list> {
   }
 
 
-
-
-
-
-
   Widget buildCompletedList() {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          SizedBox(height: 20),
-          Card(
-            elevation: 4,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-                  ),
-                  child: Center(
-                    child: Text(
-                      "Completed Tasks",
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+    return Scaffold(
+      body: Column(
+          children:[
+            Expanded(
+              child: _tasks.where((task) => task['is_complete'] == true).length == 0
+                  ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Remix.survey_line, size: 100, color: Colors.blueAccent),
+                    Text("No completed Task"),
+                  ],
+                ),
+              )
+                  : ListView.builder(
+                itemCount: _tasks.where((task) => task['is_complete'] == true).length,
+                itemBuilder: (context, index) {
+                  final task = _tasks.where((task) => task['is_complete'] == true).elementAt(index);
+                  return Card(
+                    margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  ),
-                ),
-                ListTile(
-                  title: Text("Fix Login Issue"),
-                  subtitle: Text("2025-02-05"),
-                  trailing: IconButton(
-                    icon: Icon(Icons.delete, color: Colors.red),
-                    onPressed: () {},
-                  ),
-                ),
-              ],
+                    child: ListTile(
+                      leading: Icon(Icons.check_circle, color: Colors.green),
+                      title: Text(
+                        task['task'],
+                        style: TextStyle(
+                          decoration: TextDecoration.lineThrough,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      subtitle: Text(
+                        "${task['category']} • ${task['date']}",
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      trailing: IconButton(
+                        icon: Icon(Icons.restore_from_trash, color: Colors.red),
+                        onPressed: () {
+                          _showRestoreDialog(task['id'], task['task'],context);
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ]
+      ),
+      backgroundColor: Colors.white,
+    );
+  }
+
+  void _showRestoreDialog(String taskId, String taskName,BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Mark Task as Pending?"),
+          content: Text("Do you want to mark '$taskName' as incomplete?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                _databaseRef
+                    .child('users/${_user!.uid}/To_do_list/Tasks/$taskId/is_complete')
+                    .set(false)
+                    .then((_) {
+                  _loadTasks();
+                  Navigator.pop(context);
+                });
+              },
+              child: Text(
+                "Restore",
+                style: TextStyle(color: Colors.blue),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
+
+
+  ///missed tasks
+  Widget buildMissedList() {
+    // Get current date (without time)
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+
+    // Filter tasks that are missed (date is past and not completed)
+    final missedTasks = _tasks.where((task) {
+      try {
+        final taskDate = DateFormat('yyyy-MM-dd').parse(task['date']);
+        return taskDate.isBefore(today) && task['is_complete'] == false;
+      } catch (e) {
+        return false;
+      }
+    }).toList();
+
+    return Scaffold(
+      body: missedTasks.isEmpty
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.calendar_today, size: 60, color: Colors.grey),
+            SizedBox(height: 16),
+            Text("No missed tasks", style: TextStyle(fontSize: 18)),
+          ],
+        ),
+      )
+          : ListView.builder(
+        itemCount: missedTasks.length,
+        itemBuilder: (context, index) {
+          final task = missedTasks[index];
+          return Card(
+            margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            color: Colors.red.shade50, // Light red background for missed tasks
+            child: ListTile(
+              leading: Icon(Icons.warning_amber, color: Colors.orange),
+              title: Text(
+                task['task'],
+                style: TextStyle(
+                  color: Colors.red.shade900,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Category: ${task['category']}"),
+                  Text("Due: ${task['date']} (Missed)"),
+                ],
+              ),
+              trailing: Icon(Icons.block, color: Colors.grey), // Indicates cannot edit
+            ),
+          );
+        },
       ),
     );
+  }
+  bool isTaskMissed(Map<dynamic, dynamic> task) {
+    try {
+      final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+      final taskDate = DateFormat('yyyy-MM-dd').parse(task['date']);
+      return taskDate.isBefore(today) && task['is_complete'] == false;
+    } catch (e) {
+      return false;
+    }
   }
 }

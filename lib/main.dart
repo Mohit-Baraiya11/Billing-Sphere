@@ -218,11 +218,3 @@ class ArrowPainter extends CustomPainter {
     return false;
   }
 }
-
-
-
-
-
-
-
-
