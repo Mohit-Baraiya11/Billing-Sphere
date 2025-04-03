@@ -2,9 +2,9 @@ import 'package:billing_sphere/Home/Prefered_underline_appbar.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:remixicon/remixicon.dart';
 
 class Add_Bank_Account extends StatefulWidget {
   @override
@@ -174,7 +174,7 @@ class AddBankAccount extends State<Add_Bank_Account> {
                           decoration: InputDecoration(
                             labelText: "IFSC Code",
                             hintText: "IFSC Code",
-                            suffixIcon: Icon(FlutterRemix.search_2_line, color: Colors.blueAccent),
+                            suffixIcon: Icon(Remix.search_2_line, color: Colors.blueAccent),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8.0),
                             ),

@@ -1,7 +1,7 @@
 import 'package:billing_sphere/Home/Prefered_underline_appbar.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_remix/flutter_remix.dart';
+import 'package:remixicon/remixicon.dart';
 
 import '../BottomNavbar_save_buttons.dart';
 
@@ -179,7 +179,7 @@ class AddnewParty extends State<Add_new_Party>{
         bottom: Prefered_underline_appbar(),
         actions: [
           IconButton(
-            icon: Icon(FlutterRemix.settings_2_line),
+            icon: Icon(Remix.settings_2_line),
             onPressed: () {
 
             },
@@ -286,7 +286,7 @@ class AddnewParty extends State<Add_new_Party>{
                                     labelText: "As of Date",
                                     hintText: "As of Date",
                                     suffixIcon: Icon(
-                                      FlutterRemix.calendar_2_line,
+                                      Remix.calendar_2_line,
                                       color: Colors.blue,
                                     ),
                                     border: OutlineInputBorder(

@@ -24,7 +24,6 @@ import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:printing/printing.dart';
 import 'package:remixicon/remixicon.dart';
 
@@ -51,10 +50,10 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
   void initState() {
     super.initState();
     fetchTransactions();
-    print(filter_apply);
+    // print(filter_apply);
   }
 
-  void fetchTransactions() {
+  Future<void> fetchTransactions() async {
     User? user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
@@ -67,70 +66,74 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
 
     ref.onValue.listen((event) {
       if (event.snapshot.value != null) {
-        Map<dynamic, dynamic> data = event.snapshot.value as Map<dynamic, dynamic>;
+        print("Raw Firebase Transactions: ${event.snapshot.value}");
+
+        Map<dynamic, dynamic> data = Map.from(event.snapshot.value as Map<dynamic, dynamic>);
 
         List<Map<String, dynamic>> fetchedTransactions = [];
 
         data.forEach((transactionId, value) {
           String type = value["type"] ?? "N/A";
           String name = "Unknown";
-          String phone = value["phone"];
+          String phone = value["phone"] ?? "";
           String total = "0.00";
-          String unused = "0.00";
-          String description = value["description"];
+          String balance = "0.00";
+          String description = value["description"] ?? "";
           String date = value["date"] ?? "N/A";
-          int currentTime = value["current_time"] ?? 0; // Get timestamp
+          int currentTime = value["current_time"] ?? 0;
 
           // Mapping values based on transaction type
           if (type == "payment-in") {
             name = value["customer"] ?? "Unknown";
-            total = value["received"] ?? "0.00";
-            unused = value["received"] ?? "0.00";
+            total = value["received"]?.toString() ?? "0.00";
+            balance = value["received"]?.toString() ?? "0.00";
           } else if (type == "sale") {
             name = value["customer"] ?? "Unknown";
-            total = value["total_amount"] ?? "0.00";
-            unused = value["unused"] ?? "0.00";
+            total = value["total_amount"]?.toString() ?? "0.00";
+            balance = value["balance_due"]?.toString() ?? "0.00";
           } else if (type == "purchase") {
             name = value["party_name"] ?? "Unknown";
-            total = value["total_amount"] ?? "0.00";
-            unused = value["unused"] ?? "0.00";
+            total = value["total_amount"]?.toString() ?? "0.00";
+            balance = value["balance_due"]?.toString() ?? "0.00";
           } else if (type == "payment-out") {
             name = value["party_name"] ?? "Unknown";
-            total = value["paid"] ?? "0.00";
-            unused = value["unused"] ?? "0.00";
+            total = value["paid"]?.toString() ?? "0.00";
+            balance = value["unused"]?.toString() ?? "0.00";
           } else if (type == "expenses") {
-            name = value["expenses_category"] ?? "Unknown";
-            total = value["total_amount"] ?? "0.00";
-            unused = value["unused"] ?? "0.00";
+            name = value["category"] ?? value["expenses_category"] ?? "Unknown";
+            total = value["amount"]?.toString() ?? "0.00";
           }
 
-          // Add transaction data with its ID and timestamp
+          // Add transaction data
           fetchedTransactions.add({
-            "id": transactionId, // Store the transaction ID
+            "id": transactionId,
             "name": name,
-            "phone":phone,
+            "phone": phone,
             "date": date,
-            "description":description,
+            "description": description,
             "total": total,
-            "unused": unused,
+            "unused": balance,
             "transactionType": type,
-            "current_time": currentTime, // Add timestamp for sorting
+            "current_time": currentTime,
           });
         });
 
-        // Sort transactions by current_time in descending order (Latest first)
+        print("📝 Fetched Transactions: ${fetchedTransactions.length}");
+        print(fetchedTransactions);
+
+        // Sort by latest transaction
         fetchedTransactions.sort((a, b) => b["current_time"].compareTo(a["current_time"]));
 
         setState(() {
           transactions = fetchedTransactions;
-          isLoading = false; // Stop showing the loading indicator
+          isLoading = false;
         });
       } else {
+        print("No transactions found");
         setState(() {
           transactions = [];
-          isLoading = false; // Stop loading indicator even if no data
+          isLoading = false;
         });
-        print("No transactions found");
       }
     });
   }
@@ -581,20 +584,20 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                         ? Center(child: CircularProgressIndicator())
                         : transactions.isEmpty
                         ? Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          height: 100,
-                          width: 100,
-                          child: Image.asset("Assets/Images/note.png"),
-                        ),
-                        const Text(
-                          "Hey! You have not added any transactions yet.\nAdd your first transaction now.",
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 20),
-                      ],
-                    )
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              height: MediaQuery.of(context).size.height,
+                              width: 100,
+                              child: Image.asset("Assets/Images/note.png"),
+                            ),
+                            Text(
+                              "Hey! You have not added any transactions yet.\nAdd your first transaction now.",
+                              textAlign: TextAlign.center,
+                            ),
+                             SizedBox(height: 20),
+                       ],
+                      )
                         : Column(
                       children: transactions
                           .where((transaction) =>
@@ -636,7 +639,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 10.0),
                           child: Container(
-                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            padding: EdgeInsets.symmetric(horizontal: 16),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(10),
@@ -652,6 +655,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                SizedBox(height: 4),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
@@ -662,16 +666,26 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                         fontWeight: FontWeight.w400,
                                       ),
                                     ),
-                                    Text(
-                                      transaction["date"],
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey,
-                                      ),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text("Date",
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                        Text(
+                                          transaction["date"],
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                                SizedBox(height: 8),
                                 Container(
                                   decoration: BoxDecoration(
                                     color: transaction["transactionType"] == "payment-in"
@@ -685,7 +699,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                         : transaction["transactionType"] == "expenses"
                                         ? Colors.purple.shade100
                                         : Color(0xFFC0F1E1),
-                                    borderRadius: BorderRadius.circular(5),
+                                    borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4),
@@ -696,7 +710,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                         color: transaction["transactionType"] == "payment-in"
                                             ? Color(0xFF38C782)
                                             : transaction["transactionType"] == "sale"
-                                            ? Colors.green
+                                            ? Color(0xFF38C782)
                                             : transaction["transactionType"] == "purchase"
                                             ? Colors.deepOrange
                                             : transaction["transactionType"] == "payment-out"
@@ -708,7 +722,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                     ),
                                   ),
                                 ),
-                                SizedBox(height: 12),
+                                SizedBox(height: 6),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
@@ -731,7 +745,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                               Text(
                                                 "₹ ${transaction["total"]}",
                                                 style: TextStyle(
-                                                  fontSize: 16,
+                                                  fontSize: 14,
                                                   fontWeight: FontWeight.bold,
                                                 ),
                                               ),
@@ -741,7 +755,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                             crossAxisAlignment: CrossAxisAlignment.end,
                                             children: [
                                               Text(
-                                                "Unused",
+                                                "Balance",
                                                 style: TextStyle(
                                                   fontSize: 12,
                                                   color: Colors.grey,
@@ -751,7 +765,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                               Text(
                                                 transaction["unused"],
                                                 style: TextStyle(
-                                                  fontSize: 16,
+                                                  fontSize: 14,
                                                   fontWeight: FontWeight.bold,
                                                 ),
                                               ),
@@ -857,6 +871,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                     ),
                                   ],
                                 ),
+                                SizedBox(height: 6),
                               ],
                             ),
                           ),
@@ -877,7 +892,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     padding: EdgeInsets.all(14),
-                    backgroundColor: Colors.red,
+                    backgroundColor: Color(0xFFE03537),
                   ),
                   onPressed: () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => Add_new_Sales()));
@@ -907,8 +922,8 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
 }
 var iconOf_moreOption = [
   Remix.bank_line,
-  FlutterRemix.sticky_note_line,
-  FlutterRemix.arrow_up_down_line,
+  Remix.sticky_note_line,
+  Remix.arrow_up_down_line,
 ];
 var labelOf_moreOption = [
   "Bank Account",
@@ -1000,11 +1015,11 @@ var saleTransaction_label = [
   "P2P Transfer",
 ];
 var saleTransaction_icon = [
-  FlutterRemix.download_cloud_2_line,
+  Remix.download_cloud_2_line,
   Remix.discount_percent_line,
-  FlutterRemix.shopping_cart_2_line,
-  FlutterRemix.money_cny_box_line,
-  FlutterRemix.wallet_3_line,
+  Remix.shopping_cart_2_line,
+  Remix.money_cny_box_line,
+  Remix.wallet_3_line,
   Remix.p2p_line,
 ];
 

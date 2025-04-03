@@ -7,7 +7,6 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:remixicon/remixicon.dart';
@@ -110,7 +109,7 @@ class _Purchase extends State<Purchase> {
   }
 
 
-  Future<void> savePaymentInData(String userId) async {
+  Future<void> SavePurchaseData(String userId) async {
     DatabaseReference paymentInRef = FirebaseDatabase.instance.ref("users/$userId/Transactions/");
     DatabaseReference partiesRef = FirebaseDatabase.instance.ref("users/$userId/Parties");
 
@@ -284,6 +283,9 @@ class _Purchase extends State<Purchase> {
     return partyList;
   }
 
+  // Loading state
+  bool isLoading = false;
+
   @override
   void initState() {
     super.initState();
@@ -308,36 +310,76 @@ class _Purchase extends State<Purchase> {
       appBar: AppBar(
         systemOverlayStyle: SystemUiOverlayStyle(
           statusBarColor: Colors.grey.shade400,
-          statusBarIconBrightness: Brightness.light, // Light icons (for dark backgrounds)
+          statusBarIconBrightness: Brightness.light,
         ),
         surfaceTintColor: Colors.white,
         backgroundColor: Colors.white,
         title: Text('Purchase'),
         bottom: Prefered_underline_appbar(),
       ),
-      bottomNavigationBar: BottomNavbarSaveButton(
-        leftButtonText: 'cencle',
-        rightButtonText: 'save',
-        leftButtonColor: Colors.white,
-        rightButtonColor: Colors.blueAccent,
-        onLeftButtonPressed: (){},
-        onRightButtonPressed: () async {
-          User? user = FirebaseAuth.instance.currentUser;
-          if (user != null) {
-            await savePaymentInData(user.uid);
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('User not logged in!')),
-            );
-          }
-        },
+      bottomNavigationBar:Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+                onPressed: (){
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                ),
+                child: Text("Cencle",style: TextStyle(fontWeight: FontWeight.bold,color: Colors.black),)
+            ),
+          ),
+          Expanded(
+            child: ElevatedButton(
+                onPressed: isLoading
+                    ? null // Disable the button while loading
+                    : () async {
+                  setState(() {
+                    isLoading = true; // Show loading indicator
+                  });
+                  try {
+                    User? user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      await SavePurchaseData(user.uid);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('User not logged in!')),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  } finally {
+                    setState(() {
+                      isLoading = false; // Hide loading indicator
+                    });
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                ),
+                child: Text("Save",style: TextStyle(fontWeight: FontWeight.bold,color: Colors.white),)
+            ),
+          ),
+        ],
       ),
       body: Container(
         color:  Color(0xFFE8E8E8),
         child: Column(
           children: [
             Expanded(
-              child: SingleChildScrollView(
+              child:isLoading?Center(child: CircularProgressIndicator(color: Colors.black,),):
+              SingleChildScrollView(
                 physics: BouncingScrollPhysics(),
                 child:  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1039,7 +1081,6 @@ class _Purchase extends State<Purchase> {
                   ),
                 ),
               ),
-
           ],
         ),
       ),

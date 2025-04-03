@@ -7,7 +7,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:remixicon/remixicon.dart';
 
@@ -69,104 +69,6 @@ class _Expenses extends State<Expenses> {
 
   String? selected_Expense_Value = "Indirect Expense";
 
-  void _showAddCategoryDialog() {
-    String newCategory = '';
-    TextEditingController dropdownController = TextEditingController(
-      text: selected_Expense_Value, // Display the selected value in the TextField
-    );
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.zero,
-          ),
-          title: Text('Add Expense Category'),
-          content: Container(
-            width: 400,
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // First TextField for entering a new category
-                  TextField(
-                    onChanged: (value) {
-                      newCategory = value; // Capture input value
-                    },
-                    decoration: InputDecoration(
-                      labelText: "Expense Category",
-                      hintText: "Expense Category",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.0),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.0),
-                        borderSide: BorderSide(color: Colors.blue, width: 2.0),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.0),
-                        borderSide: BorderSide(color: Colors.grey, width: 1.0),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 16),
-                  Container(
-                    width: 300,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.grey,
-                        width: 1.0,
-                      ),
-                      borderRadius: BorderRadius.circular(8)
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 3.0,bottom: 3.0,left: 10),
-                      child: DropdownButton<String>(
-                        value:selected_Expense_Value,
-                        icon: Icon(Icons.arrow_drop_down),
-                        items: [
-                          DropdownMenuItem(child: Text("Indirect Expense"),value: "Indirect Expense",),
-                          DropdownMenuItem(child: Text("Direct Expense"),value: "Direct Expense",),
-                        ],
-                        onChanged: (String? value) {
-                          setState(() {
-                            print("${selected_Expense_Value}");
-                            selected_Expense_Value = value;
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                if (newCategory.isNotEmpty) {
-                  setState(() {
-                    _expenseCategories.add(newCategory);
-                  });
-                }
-                Navigator.of(context).pop();
-              },
-              child: Text('Add'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
   TextEditingController total_price = TextEditingController();
   TextEditingController description_controller = TextEditingController();
@@ -188,7 +90,6 @@ class _Expenses extends State<Expenses> {
       }
     }
   }
-
 
   Future<void> saveExpenseData(String userId) async {
     DatabaseReference userRef = FirebaseDatabase.instance.ref("users/$userId");
@@ -339,6 +240,74 @@ class _Expenses extends State<Expenses> {
       );
     }
   }
+  Future<List<Map<String, dynamic>>> fetchExpenseCategories(String pattern) async {
+    try {
+      User? user = FirebaseAuth.instance.currentUser;
+      String? userid = user?.uid;
+
+      if (userid == null) {
+        print("No user is signed in!");
+        return [];
+      }
+
+      print("User ID: $userid");
+
+      final categoriesRef = FirebaseDatabase.instance
+          .ref()
+          .child('users')
+          .child('userid')
+          .child('Categories');
+
+      final categoriesSnapshot = await categoriesRef.get();
+
+      if (!categoriesSnapshot.exists || categoriesSnapshot.value == null) {
+        print("No categories found in Firebase.");
+        return [];
+      }
+
+      // Get the first category node (since the category ID is dynamic)
+      Map<dynamic, dynamic> categoriesData = categoriesSnapshot.value as Map<dynamic, dynamic>;
+      String firstCategoryKey = categoriesData.keys.first;  // Get first category key
+
+      print("Detected Category Key: $firstCategoryKey");
+
+      final expenseRef = categoriesRef.child(firstCategoryKey).child('Expense_category');
+
+      final snapshot = await expenseRef.get();
+
+      if (!snapshot.exists || snapshot.value == null) {
+        print("No expense categories found inside first category.");
+        return [];
+      }
+
+      print("Raw Firebase data: ${snapshot.value}");
+
+      List<Map<String, dynamic>> expenseCategories = [];
+      Map<dynamic, dynamic> data = snapshot.value as Map<dynamic, dynamic>;
+
+      data.forEach((key, value) {
+        Map<String, dynamic> category = Map<String, dynamic>.from(value);
+        category['id'] = key;
+        category['total_amount'] = value['total_amount'].toString();  // Ensure correct type
+        expenseCategories.add(category);
+      });
+
+      print("Fetched categories: $expenseCategories");
+
+      return expenseCategories
+          .where((category) => category['category_name']
+          .toString()
+          .toLowerCase()
+          .contains(pattern.toLowerCase()))
+          .toList();
+    } catch (e) {
+      print('Error fetching expense categories: $e');
+      return [];
+    }
+  }
+  // Loading state
+  bool isLoading = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -351,40 +320,70 @@ class _Expenses extends State<Expenses> {
         backgroundColor: Colors.white,
         title: Text('Expense'),
         bottom: Prefered_underline_appbar(),
-        actions: [
-          IconButton(
-            icon: Icon(FlutterRemix.settings_2_line),
-            onPressed: () {
-              // Add settings functionality here
-            },
+      ),
+      bottomNavigationBar:Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+                onPressed: (){
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                ),
+                child: Text("Cencle",style: TextStyle(fontWeight: FontWeight.bold,color: Colors.black),)
+            ),
+          ),
+          Expanded(
+            child: ElevatedButton(
+                onPressed: isLoading
+                    ? null // Disable the button while loading
+                    : () async {
+                  setState(() {
+                    isLoading = true; // Show loading indicator
+                  });
+                  try {
+                    User? user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      await saveExpenseData(user.uid);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('User not logged in!')),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  } finally {
+                    setState(() {
+                      isLoading = false; // Hide loading indicator
+                    });
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                ),
+                child: Text("Save",style: TextStyle(fontWeight: FontWeight.bold,color: Colors.white),)
+            ),
           ),
         ],
-      ),
-      bottomNavigationBar: BottomNavbarSaveButton(
-        leftButtonText: 'cencle',
-        rightButtonText: 'save',
-        leftButtonColor: Colors.white,
-        rightButtonColor: Colors.blueAccent,
-        onLeftButtonPressed: (){
-          Navigator.pop(context);
-        },
-        onRightButtonPressed: () async {
-          User? user = FirebaseAuth.instance.currentUser;
-          if (user != null) {
-            await saveExpenseData(user.uid);
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('User not logged in!')),
-            );
-          }
-        },
       ),
       body: Container(
         color:  Color(0xFFE8E8E8),
         child: Column(
           children: [
             Expanded(
-              child: SingleChildScrollView(
+              child:isLoading?Center(child: CircularProgressIndicator(color: Colors.black,),):
+              SingleChildScrollView(
                 physics: BouncingScrollPhysics(),
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -493,78 +492,56 @@ class _Expenses extends State<Expenses> {
                         color: Colors.white,
                         child: Column(
                           children: [
-                            Autocomplete<String>(
-                                optionsBuilder: (TextEditingValue textEditingValue) {
-                                  if (textEditingValue.text.isEmpty) {
-                                    return _expenseCategories;
-                                  }
-                                  return _expenseCategories
-                                      .where((category) => category
-                                      .toLowerCase()
-                                      .contains(textEditingValue.text.toLowerCase()))
-                                      .toList()
-                                    ..add('+ Add Expense Category');
-                                },
-                                onSelected: (String selection) {
-                                  if (selection == '+ Add Expense Category') {
-                                    _showAddCategoryDialog();
-                                  }
-                                },
-                                fieldViewBuilder: (BuildContext context,
-                                    TextEditingController textEditingController,
-                                    FocusNode focusNode,
-                                    VoidCallback onFieldSubmitted) {
-                                  return TextField(
-                                    focusNode: focusNode,
-                                    controller:expense_category_controller,
-                                    onChanged: (value){
-                                      setState(() {
-                                        expense_category_controller.text = value;
-                                      });
-                                    },
-                                    decoration: InputDecoration(
-                                      labelText: "Expense Category",
-                                      hintText: "Type or select...",
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(4.0),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(4.0),
-                                        borderSide: BorderSide(color: Colors.blue, width: 2.0),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(4.0),
-                                        borderSide: BorderSide(color: Colors.grey, width: 1.0),
-                                      ),
-                                    ),
-                                  );
-                                },
-                                  optionsViewBuilder: (BuildContext context, AutocompleteOnSelected<String> onSelected, Iterable<String> options) {
-                                    return Align(
-                                      alignment: Alignment.topLeft,
-                                      child: Material(
-                                        elevation: 4.0,
-                                        child: Container(
-                                          width: MediaQuery.of(context).size.width - 32, // Adjust the width dynamically
-                                          child: ListView.builder(
-                                            padding: EdgeInsets.zero,
-                                            itemCount: options.length,
-                                            itemBuilder: (BuildContext context, int index) {
-                                              final option = options.elementAt(index);
-                                              return ListTile(
-                                                title: Text(option),
-                                                onTap: () {
-                                                  onSelected(option);
-                                                },
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }
-
+                            TypeAheadField<Map<String, dynamic>>(
+                              textFieldConfiguration: TextFieldConfiguration(
+                                controller: expense_category_controller,
+                                decoration: InputDecoration(
+                                  labelText: "Expense Category",
+                                  hintText: "Type or select...",
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                    borderSide: BorderSide(color: Colors.blue, width: 2.0),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                    borderSide: BorderSide(color: Colors.grey, width: 1.0),
+                                  ),
+                                ),
                               ),
+                              suggestionsCallback: (pattern) async {
+                                return await fetchExpenseCategories(pattern);
+                              },
+                              itemBuilder: (context, Map<String, dynamic> suggestion) {
+                                return Material(
+                                  color: Colors.white,
+                                  child: ListTile(
+                                    title: Text(
+                                      suggestion['category_name'],
+                                      style: TextStyle(color: Colors.black),
+                                    ),
+                                    trailing: Text(
+                                      "Total: ${suggestion['total_amount'].toString()}",
+                                      style: TextStyle(color: Colors.black54),
+                                    ),
+                                  ),
+                                );
+                              },
+                              onSuggestionSelected: (Map<String, dynamic> suggestion) {
+                                expense_category_controller.text = suggestion['category_name'];
+                              },
+                              noItemsFoundBuilder: (context) => Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Text(
+                                    "No categories found",
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                ),
+                              ),
+                            ),
                             SizedBox(height: 30,),
                             Row(
                                 children: [
@@ -986,7 +963,6 @@ class _Expenses extends State<Expenses> {
                   ),
                 ),
               ),
-
           ],
         ),
       ),

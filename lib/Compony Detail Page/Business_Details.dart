@@ -2,8 +2,8 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:remixicon/remixicon.dart';
 
 import '../Home/BottomNavbar_save_buttons.dart';
 import '../Home/Prefered_underline_appbar.dart';
@@ -565,7 +565,7 @@ class BusinessDetails extends State<Business_Details> {
                                       controller: TextEditingController(text: selectedState),
                                       decoration: InputDecoration(
                                         suffixIcon: Icon(
-                                          FlutterRemix.arrow_down_s_line,
+                                          Remix.arrow_down_s_line,
                                           color: Colors.blueAccent,
                                         ),
                                         border: OutlineInputBorder(),
@@ -580,7 +580,7 @@ class BusinessDetails extends State<Business_Details> {
                                       controller: TextEditingController(text: selectBusinessType),
                                       decoration: InputDecoration(
                                         suffixIcon: Icon(
-                                          FlutterRemix.arrow_down_s_line,
+                                          Remix.arrow_down_s_line,
                                           color: Colors.blueAccent,
                                         ),
                                         border: OutlineInputBorder(),
@@ -595,7 +595,7 @@ class BusinessDetails extends State<Business_Details> {
                                       controller: TextEditingController(text: selectBusinessCategory),
                                       decoration: InputDecoration(
                                         suffixIcon: Icon(
-                                          FlutterRemix.arrow_down_s_line,
+                                          Remix.arrow_down_s_line,
                                           color: Colors.blueAccent,
                                         ),
                                         border: OutlineInputBorder(),

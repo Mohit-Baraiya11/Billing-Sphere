@@ -1,8 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:intl/intl.dart';
+import 'package:remixicon/remixicon.dart';
 
 class Adjust_Stock extends StatefulWidget {
   final String itemId;
@@ -173,7 +173,7 @@ class _AdjustStockPageState extends State<Adjust_Stock> {
                   borderSide: const BorderSide(color: Colors.grey),
                 ),
                 suffixIcon: IconButton(
-                  icon: const Icon(FlutterRemix.calendar_line, color: Colors.blue),
+                  icon: Icon(Remix.calendar_line, color: Colors.blue),
                   onPressed: () => _selectDate(context),
                 ),
               ),

@@ -7,7 +7,6 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:remixicon/remixicon.dart';
@@ -53,7 +52,7 @@ class PaymentOut extends State<Payment_Out> {
   }
 
 
-  Future<void> savePaymentOutData(String userId) async {
+  Future<void> savePaymentOut(String userId) async {
     DatabaseReference paymentOutRef = FirebaseDatabase.instance.ref("users/$userId/Transactions/");
     DatabaseReference bankAccountRef;
     DatabaseReference partiesRef = FirebaseDatabase.instance.ref("users/$userId/Parties");
@@ -201,6 +200,9 @@ class PaymentOut extends State<Payment_Out> {
     return partyList;
   }
 
+  // Loading state
+  bool isLoading = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -214,32 +216,69 @@ class PaymentOut extends State<Payment_Out> {
         title: Text('Payment-Out'),
         bottom: Prefered_underline_appbar(),
       ),
-      bottomNavigationBar:BottomNavbarSaveButton(
-        leftButtonText: 'cencle',
-        rightButtonText: 'save',
-        leftButtonColor: Colors.white,
-        rightButtonColor: Colors.blueAccent,
-        onLeftButtonPressed: (){
-          Navigator.pop(context);
-        },
-        onRightButtonPressed: () async {
-          User? user = FirebaseAuth.instance.currentUser;
-          if (user != null) {
-            await savePaymentOutData(user.uid);
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('User not logged in!')),
-            );
-          }
-        },
+      bottomNavigationBar:Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+                onPressed: (){
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                ),
+                child: Text("Cencle",style: TextStyle(fontWeight: FontWeight.bold,color: Colors.black),)
+            ),
+          ),
+          Expanded(
+            child: ElevatedButton(
+                onPressed: isLoading
+                    ? null // Disable the button while loading
+                    : () async {
+                  setState(() {
+                    isLoading = true; // Show loading indicator
+                  });
+                  try {
+                    User? user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      await savePaymentOut(user.uid);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('User not logged in!')),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  } finally {
+                    setState(() {
+                      isLoading = false; // Hide loading indicator
+                    });
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                ),
+                child: Text("Save",style: TextStyle(fontWeight: FontWeight.bold,color: Colors.white),)
+            ),
+          ),
+        ],
       ),
-      // Prevent layout shifting when the keyboard opens
       body: Container(
         color:  Color(0xFFE8E8E8),
         child: Column(
           children: [
             Expanded(
-              child: SingleChildScrollView(
+              child:isLoading?Center(child: CircularProgressIndicator(color: Colors.black,),):
+              SingleChildScrollView(
                 physics: BouncingScrollPhysics(),
                 child:  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -779,7 +818,6 @@ class PaymentOut extends State<Payment_Out> {
                   ),
                 ),
               ),
-
           ],
         ),
       ),

@@ -1,6 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_remix/flutter_remix.dart';
+import 'package:remixicon/remixicon.dart';
 
 import '../Home/Prefered_underline_appbar.dart';
 
@@ -191,7 +191,7 @@ class _PurchaseReportState extends State<Purchase_Report> {
                     ),
                   ),
                   SizedBox(width: 20),
-                  Icon(FlutterRemix.calendar_2_line, color: Colors.blueAccent, size: 15),
+                  Icon(Remix.calendar_2_line, color: Colors.blueAccent, size: 15),
                 ],
               ),
             ),

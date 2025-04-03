@@ -25,7 +25,7 @@ class _AddItemsToSaleState extends State<Add_Items_to_Sale> {
   String? selectedUnit = 'Kilogram';
   String? taxOption = 'Without Tax';
   String? title;
-  Map<String, dynamic>? existingItem; // Store the existing item data
+  Map<String, dynamic>? existingItem;
   bool isReadOnly = true; // Controls whether the form is read-only
   bool isEditing = false; // Tracks if the user is in edit mode
 
@@ -64,56 +64,64 @@ class _AddItemsToSaleState extends State<Add_Items_to_Sale> {
 
   Future<List<Map<String, dynamic>>> fetchItems(String query) async {
     List<Map<String, dynamic>> itemList = [];
-
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return itemList;
+
     String userId = user.uid;
+    DatabaseReference itemsRef = FirebaseDatabase.instance.ref().child("users/$userId/Items");
+    final snapshot = await itemsRef.get();
 
-    // Correct path: users/{userId}/Items (directly under user)
-    final snapshot = await _databaseRef.child("users/$userId/Items").get();
-
-    if (snapshot.exists && snapshot.value is Map<dynamic, dynamic>) {
-      Map<dynamic, dynamic> items = Map<dynamic, dynamic>.from(snapshot.value as Map);
-
-      items.forEach((key, value) {
-        if (value is Map<dynamic, dynamic>) {
-          final basicInfo = value["basicInfo"] is Map<dynamic, dynamic>
-              ? Map<String, dynamic>.from(value["basicInfo"])
-              : {};
-
-          // Match 'itemName' (now correctly spelled in your database)
-          if (basicInfo.containsKey("itemName") &&
-              basicInfo["itemName"].toString().toLowerCase().contains(query.toLowerCase())) {
-            itemList.add({
-              "id": key,
-              "itemName": basicInfo["itemName"] ?? "",
-              "purchasePrice": value["pricing"]?["purchasePrice"] ?? 0,
-              "salePrice": value["pricing"]?["salePrice"] ?? 0,
-              "discountValue": value["pricing"]?["discount"] ?? 0,
-              "openingStock": value["stock"]?["openingStock"] ?? 0,
-            });
-          }
-        }
-      });
+    if (!snapshot.exists || snapshot.value == null) {
+      print("Firebase data does NOT exist or is NULL!");
+      return itemList;
     }
 
-    // Show "Add New Item" only if no matches found
+    Map<dynamic, dynamic> items = Map<dynamic, dynamic>.from(snapshot.value as Map);
+    print("Raw Firebase Data: $items");
+
+    items.forEach((key, value) {
+      if (value is Map<dynamic, dynamic>) {
+        final basicInfo = value["basicInfo"] as Map<dynamic, dynamic>? ?? {};
+        String itemName = basicInfo["itemName"]?.toString() ?? "";
+
+        print("Checking item: $itemName");
+
+        if (itemName.toLowerCase().contains(query.toLowerCase())) {
+          print("Matched Item: $itemName");
+          itemList.add({
+            "id": key,
+            "itemName": itemName,
+            "purchasePrice": (value["pricing"]?["purchasePrice"] ?? 0).toDouble(),
+            "salePrice": (value["pricing"]?["salePrice"] ?? 0).toDouble(),
+            "discountValue": (value["pricing"]?["discount"]?["value"] ?? 0).toDouble(), // Fix here
+            "openingStock": (value["stock"]?["openingStock"] ?? 0).toInt(),
+          });
+        }
+      }
+    });
+
+    print("Filtered Items Count: ${itemList.length}");
+
     if (itemList.isEmpty && query.isNotEmpty) {
       return [{"itemName": "Add New Item", "isNew": true}];
     }
 
     return itemList;
   }
+
   void _fillItemFields(Map<String, dynamic> itemData) {
     setState(() {
       itemNameController.text = itemData["itemName"] ?? "";
       rateController.text = itemData["salePrice"]?.toString() ?? "0";
       discountController.text = itemData["discountValue"]?.toString() ?? "0";
-
-      selectedItemId = itemData["id"]; // Store selected item ID
-      openingStock = itemData["openingStock"] ?? 0; // Fetch initial stock
+      selectedItemId = itemData["id"];
+      openingStock = itemData["openingStock"] ?? 0;
     });
   }
+
+
+
+
   void _checkStockAvailability() {
     if (selectedItemId == null || quantityController.text.isEmpty) {
       return; // No item selected or quantity empty
@@ -132,25 +140,42 @@ class _AddItemsToSaleState extends State<Add_Items_to_Sale> {
   }
 
   Future<bool> checkIfItemExists(String itemName) async {
-    final snapshot = await _databaseRef.get();
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
 
-    if (snapshot.exists && snapshot.value is Map<dynamic, dynamic>) {
-      Map<String, dynamic> items = Map<String, dynamic>.from(snapshot.value as Map);
+    String userId = user.uid;
+    DatabaseReference itemsRef = FirebaseDatabase.instance.ref().child("users/$userId/Items");
+    final snapshot = await itemsRef.get();
 
-      for (var key in items.keys) {
-        var itemData = items[key];
+    if (!snapshot.exists || snapshot.value == null) {
+      print("❌ No inventory items found in Firebase.");
+      return false;
+    }
 
-        if (itemData is Map && itemData.containsKey("basicInfo")) {
-          var basicInfo = itemData["basicInfo"];
+    Map<dynamic, dynamic> items = Map<dynamic, dynamic>.from(snapshot.value as Map);
 
-          if (basicInfo is Map && basicInfo["itemName"].toString().toLowerCase() == itemName.toLowerCase()) {
-            return true; // Item exists
+    for (var key in items.keys) {
+      var itemData = items[key];
+
+      if (itemData is Map && itemData.containsKey("basicInfo")) {
+        var basicInfo = itemData["basicInfo"];
+
+        if (basicInfo is Map) {
+          String existingItemName = (basicInfo["itemName"] ?? "").toString().trim().toLowerCase();
+          String enteredItemName = itemName.trim().toLowerCase();
+
+          print("🔍 Checking item: $existingItemName against entered: $enteredItemName");
+
+          if (existingItemName == enteredItemName) {
+            print("✅ Item '$itemName' exists in inventory.");
+            return true; // Item found
           }
         }
       }
     }
 
-    return false; // Item does not exist
+    print("❌ Item '$itemName' does NOT exist in inventory.");
+    return false; // Item not found
   }
   late DatabaseReference _databaseRef;
 
@@ -322,28 +347,44 @@ class _AddItemsToSaleState extends State<Add_Items_to_Sale> {
                     SizedBox(height: 20),
                     SizedBox(
                       height: 50,
-                      child: TypeAheadField<Map<String, dynamic>>(
-                        suggestionsCallback: (pattern) async {
-                          return await fetchItems(pattern);
-                        },
-                        itemBuilder: (context, suggestion) {
-                          return ListTile(
-                            title: Text(suggestion["itemName"]),
-                          );
-                        },
-                        onSuggestionSelected: (suggestion) {
-                          if (suggestion["isNew"] == true) {
-                            Navigator.pushNamed(context, '/addNewItem');
-                          } else {
-                            _fillItemFields(suggestion);
-                          }
-                        },
-                        textFieldConfiguration: TextFieldConfiguration(
-                          controller: itemNameController,
-                          decoration: InputDecoration(
-                            labelText: "Item Name",
-                            hintText: "e.g. Chocolate Cake",
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(4.0)),
+                      child: Container(
+                        color: Colors.white, // Ensures white background for the dropdown
+                        child: TypeAheadField<Map<String, dynamic>>(
+                          suggestionsCallback: (pattern) async {
+                            return await fetchItems(pattern);
+                          },
+                          itemBuilder: (context, suggestion) {
+                            return Material(
+                              color: Colors.white, // White background for each item
+                              child: ListTile(
+                                title: Text(
+                                  suggestion["itemName"] ?? "Unknown Item",
+                                  style: TextStyle(color: Colors.black), // Ensure text is visible
+                                ),
+                              ),
+                            );
+                          },
+                          onSuggestionSelected: (suggestion) {
+                            if (suggestion["isNew"] == true) {
+                              Navigator.pushNamed(context, '/addNewItem');
+                            } else {
+                              _fillItemFields(suggestion);
+                            }
+                          },
+                          textFieldConfiguration: TextFieldConfiguration(
+                            controller: itemNameController,
+                            decoration: InputDecoration(
+                              labelText: "Item Name",
+                              hintText: "e.g. Chocolate Cake",
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(4.0)),
+                            ),
+                          ),
+                          noItemsFoundBuilder: (context) => Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(
+                              "No items found.",
+                              style: TextStyle(color: Colors.grey),
+                            ),
                           ),
                         ),
                       ),

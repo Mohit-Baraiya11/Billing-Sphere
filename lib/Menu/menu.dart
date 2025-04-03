@@ -5,7 +5,6 @@ import 'package:billing_sphere/Menu/Reminder.dart';
 import 'package:billing_sphere/Menu/to_do_list.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:remixicon/remixicon.dart';
 
 import 'ReportPage.dart';
@@ -47,8 +46,8 @@ class _Menu extends State<Menu>
                     dense: true,
                     visualDensity: VisualDensity.compact,
                     title: Text('To do list', style: TextStyle(fontSize: 15)),
-                    leading: Icon(FlutterRemix.file_list_3_line, color: Colors.black),
-                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    leading: Icon(Remix.file_list_3_line, color: Colors.black),
+                    trailing: Icon(Remix.arrow_right_s_line, color: Colors.blue),
                     onTap: () {
                       Navigator.push(context,MaterialPageRoute(builder: (context)=>To_do_list()));
                     },
@@ -61,7 +60,7 @@ class _Menu extends State<Menu>
                     visualDensity: VisualDensity.compact,
                     title: Text('Reminder', style: TextStyle(fontSize: 15)),
                     leading: Icon(Remix.alarm_fill, color: Colors.black),
-                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    trailing: Icon(Remix.arrow_right_s_line, color: Colors.blue),
                     onTap: () {
                       Navigator.push(context, MaterialPageRoute(builder: (context)=>Reminder()));
                     },
@@ -74,8 +73,8 @@ class _Menu extends State<Menu>
                     dense: true,
                     visualDensity: VisualDensity.compact,
                     title: Text('Reports', style: TextStyle(fontSize: 15)),
-                    leading: Icon(FlutterRemix.file_list_line, color: Colors.black),
-                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    leading: Icon(Remix.file_list_line, color: Colors.black),
+                    trailing: Icon(Remix.arrow_right_s_line, color: Colors.blue),
                     onTap: () {
                       Navigator.push(context, MaterialPageRoute(builder: (context)=>ReportPage()));
                     },
@@ -88,8 +87,8 @@ class _Menu extends State<Menu>
                     dense: true,
                     visualDensity: VisualDensity.compact,
                     title: Text('Business Profile', style: TextStyle(fontSize: 15)),
-                    leading: Icon(FlutterRemix.profile_line, color: Colors.black),
-                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    leading: Icon(Remix.profile_line, color: Colors.black),
+                    trailing: Icon(Remix.arrow_right_s_line, color: Colors.blue),
                     onTap: () {
                       Navigator.push(context,MaterialPageRoute(builder: (context)=>Business_Details()));
                     },
@@ -123,7 +122,7 @@ class _Menu extends State<Menu>
                     visualDensity: VisualDensity.compact,
                     title: Text('Bank Account', style: TextStyle(fontSize: 15)),
                     leading: Icon(Remix.bank_line, color: Colors.black),
-                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    trailing: Icon(Remix.arrow_right_s_line, color: Colors.blue),
                     onTap: () {
                       Navigator.push(context,MaterialPageRoute(builder: (context)=>Bank_Account_List()));
                     },
@@ -136,7 +135,7 @@ class _Menu extends State<Menu>
                     visualDensity: VisualDensity.compact,
                     title: Text('Cash in Hand', style: TextStyle(fontSize: 15)),
                     leading: Icon(Remix.cash_line, color: Colors.black),
-                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    trailing: Icon(Remix.arrow_right_s_line, color: Colors.blue),
                     onTap: () {
                       Navigator.push(context, MaterialPageRoute(builder: (context)=>Reminder()));
                     },
@@ -148,7 +147,7 @@ class _Menu extends State<Menu>
                     visualDensity: VisualDensity.compact,
                     title: Text('Log Out', style: TextStyle(fontSize: 15)),
                     leading: Icon(Remix.logout_circle_line,),
-                    trailing: Icon(FlutterRemix.arrow_right_s_line, color: Colors.blue),
+                    trailing: Icon(Remix.arrow_right_s_line, color: Colors.blue),
                     onTap: () {
                       Navigator.push(context,MaterialPageRoute(builder: (context)=>Profit_and_loss()));
                     },

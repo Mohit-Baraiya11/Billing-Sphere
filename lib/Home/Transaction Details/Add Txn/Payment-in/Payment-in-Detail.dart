@@ -7,7 +7,6 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:remixicon/remixicon.dart';
@@ -108,8 +107,7 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
     }
 
     String userId = user.uid;
-    DatabaseReference transactionRef =
-    FirebaseDatabase.instance.ref("users/$userId/Transactions/${widget.transactionId}");
+    DatabaseReference transactionRef = FirebaseDatabase.instance.ref("users/$userId/Transactions/${widget.transactionId}");
     DatabaseReference partiesRef = FirebaseDatabase.instance.ref("users/$userId/Parties");
 
     try {
@@ -121,24 +119,20 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
 
       Map<dynamic, dynamic> oldTransaction = event.snapshot.value as Map<dynamic, dynamic>;
 
-      // 🟢 Get old transaction details
       double oldAmount = double.tryParse(oldTransaction["total_amount"].toString()) ?? 0.0;
       String oldPaymentType = oldTransaction["paymentType"] ?? "";
       String transactionId = widget.transactionId;
       String oldPhoneNumber = oldTransaction["phone"] ?? "";
 
-      // 🟢 Get new transaction details
       double newAmount = double.tryParse(received_money.text) ?? 0.0;
       String? newPaymentType = selectedPaymentType!.isNotEmpty ? selectedPaymentType : oldPaymentType;
       String newPhoneNumber = phonenumber_controller.text.trim();
       String newCustomerName = customer_controller.text.trim();
 
-      // 🟢 Check for changes
       bool amountChanged = oldAmount != newAmount;
       bool paymentTypeChanged = oldPaymentType != newPaymentType;
       bool phoneChanged = oldPhoneNumber != newPhoneNumber;
 
-      // 🟢 Update Transaction Data
       Map<String, dynamic> updatedData = {
         "transactionId": transactionId,
         "type": "payment-in",
@@ -156,7 +150,6 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
       await transactionRef.update(updatedData);
       print("✅ Transaction updated successfully!");
 
-      // 🟢 Update Party Transaction (if amount or phone changed)
       if (amountChanged || phoneChanged || paymentTypeChanged) {
         await updatePartyTransaction(
           userId,
@@ -171,7 +164,6 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
         );
       }
 
-      // 🟢 Update Bank Transaction (if amount or payment type changed)
       if (amountChanged || paymentTypeChanged) {
         await updateBankTransaction(userId, transactionId, oldPaymentType, oldAmount, newPaymentType!);
       }
@@ -259,11 +251,9 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
 
     DatabaseReference userRef = FirebaseDatabase.instance.ref("users/$userId");
 
-    // 🔹 Get the new amount directly from the text controller
     double newAmount = double.tryParse(received_money.text) ?? 0.0;
     double amountDifference = newAmount - oldAmount;
 
-    // 🔹 Define references for old and new transactions
     DatabaseReference oldRef = (oldPaymentType == "Cash")
         ? userRef.child("Bank_accounts/Cash/Cash_transaction")
         : userRef.child("Bank_accounts/Bank/$oldPaymentType/Bank_transaction");
@@ -272,11 +262,9 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
         ? userRef.child("Bank_accounts/Cash/Cash_transaction")
         : userRef.child("Bank_accounts/Bank/$newPaymentType/Bank_transaction");
 
-    // 🔹 Delete the old transaction
     await oldRef.child(transactionId).remove();
     print("✅ Old transaction removed successfully.");
 
-    // 🔹 Adjust old balance (subtract old amount)
     DatabaseReference oldBalanceRef = (oldPaymentType == "Cash")
         ? userRef.child("Bank_accounts/Cash/total_balance")
         : userRef.child("Bank_accounts/Bank/$oldPaymentType/total_balance");
@@ -285,7 +273,7 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
     if (oldBalanceEvent.snapshot.value != null) {
       double oldBalance = double.parse(oldBalanceEvent.snapshot.value.toString());
       await oldBalanceRef.set(oldBalance - oldAmount);
-      print("🔻 Old balance updated: ${oldBalance - oldAmount}");
+      print("Old balance updated: ${oldBalance - oldAmount}");
     }
 
     // 🔹 Get current timestamp
@@ -404,13 +392,6 @@ class _Payment_in_Detail extends State<Payment_in_Detail> {
       print("✅ Old party deleted (no transactions left).");
     }
   }
-
-
-
-
-
-
-
 
 
   bool is_readyonly = true;

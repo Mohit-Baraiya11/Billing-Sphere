@@ -1,7 +1,6 @@
 import 'package:billing_sphere/Items/Add_new_item.dart';
 import 'package:billing_sphere/Items/Items_Details.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:remixicon/remixicon.dart';
@@ -202,7 +201,7 @@ class _ItemsShowState extends State<Items_show> {
                                       ),
                                       IconButton(
                                         onPressed: () {},
-                                        icon: Icon(FlutterRemix.share_forward_line),
+                                        icon: Icon(Remix.share_forward_line),
                                       ),
                                     ],
                                   ),
@@ -304,7 +303,7 @@ class _ItemsShowState extends State<Items_show> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(FlutterRemix.add_circle_line, color: Colors.white, size: 20),
+                        Icon(Remix.add_circle_line, color: Colors.white, size: 20),
                         const SizedBox(width: 8),
                         Text(
                           "Add New Item",

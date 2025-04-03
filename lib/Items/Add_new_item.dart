@@ -3,7 +3,6 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:intl/intl.dart';
 import 'package:remixicon/remixicon.dart';
 
@@ -788,8 +787,7 @@ class Addnewitem extends State<Add_new_item> with SingleTickerProviderStateMixin
                                             child: TextField(
                                               controller: purchase_price_controller,
                                               decoration: InputDecoration(
-                                                labelText: "Purchase Item",
-                                                hintText: "Purchase Item",
+                                                labelText: "Purchase Price",
                                                 floatingLabelStyle: TextStyle(color: Colors.blue),
                                                 border: OutlineInputBorder(
                                                   borderRadius: BorderRadius.circular(8.0),
@@ -888,7 +886,7 @@ class Addnewitem extends State<Add_new_item> with SingleTickerProviderStateMixin
                                           keyboardType: TextInputType.datetime,
                                           decoration: InputDecoration(
                                             labelText: "As of Date",
-                                            suffixIcon: Icon(FlutterRemix.calendar_2_line),
+                                            suffixIcon: Icon(Remix.calendar_2_line),
                                             floatingLabelStyle: TextStyle(color: Colors.blue),
                                             border: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(8.0),
@@ -956,11 +954,9 @@ class Addnewitem extends State<Add_new_item> with SingleTickerProviderStateMixin
                                       SizedBox(width: 10),
                                       Expanded(
                                         child: TextField(
-                                          keyboardType: TextInputType.number,
                                           controller: item_location_controller,
                                           decoration: InputDecoration(
                                             labelText: "Item Location",
-                                            hintText: "Item Location",
                                             border: OutlineInputBorder(
                                               borderRadius: BorderRadius.circular(8.0),
                                             ),

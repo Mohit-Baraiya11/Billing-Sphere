@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 
 class Party_Additional_Fields extends StatefulWidget {
   @override

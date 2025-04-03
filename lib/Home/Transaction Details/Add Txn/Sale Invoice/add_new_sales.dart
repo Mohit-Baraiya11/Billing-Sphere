@@ -104,7 +104,10 @@ class AddNewSales extends State<Add_new_Sales> {
     if (result != null) {
       setState(() {
         print(result);
-        addedItems.add(result);
+        addedItems.add({
+          "id": result["id"], // ✅ Store the item ID
+          ...result, // ✅ Add other item details
+        });
       });
     }
   }
@@ -292,42 +295,80 @@ class AddNewSales extends State<Add_new_Sales> {
   Future<void> _updateStockOnSave() async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return; // User not logged in
+      print("❌ User not logged in.");
+      return;
     }
+
     String userId = user.uid;
 
     for (var item in addedItems) {
-      String itemId = item["id"];
-      double selectedQuantity = double.tryParse(item["quantity"].toString()) ?? 0;
+      String itemName = item["itemName"]?.toString().trim() ?? "";
+      double quantityToDeduct = double.tryParse(item["quantity"].toString()) ?? 0;
 
-      if (selectedQuantity <= 0) continue; // Skip if invalid quantity
+      if (itemName.isEmpty || quantityToDeduct <= 0) {
+        print("⚠ Skipping invalid item or quantity: $itemName");
+        continue;
+      }
 
-      // Fetch current stock from Firebase
-      DataSnapshot snapshot = await _databaseRef.child("users/$userId/Items/$itemId/stock/openingStock").get();
+      print("🔍 Searching for item: '$itemName' to deduct $quantityToDeduct");
 
-      if (snapshot.exists) {
-        double currentStock = double.tryParse(snapshot.value.toString()) ?? 0;
+      // Fetch all items
+      final itemsSnapshot = await _databaseRef.child("users/$userId/Items").get();
 
-        double newStock = currentStock - selectedQuantity;
-        if (newStock < 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Not enough stock for ${item['itemName']}"))
-          );
-          return; // Stop updating if stock is insufficient
+      if (!itemsSnapshot.exists) {
+        print("❌ No items found in Firebase.");
+        continue;
+      }
+
+      Map<dynamic, dynamic> items = Map.from(itemsSnapshot.value as Map);
+
+      bool itemFound = false;
+
+      for (var entry in items.entries) {
+        final key = entry.key;
+        final value = entry.value;
+
+        final basicInfo = value["basicInfo"] ?? {};
+        final stock = value["stock"] ?? {};
+
+        String firebaseItemName = (basicInfo["itemName"] ?? "").toString().trim();
+
+        if (firebaseItemName.toLowerCase() == itemName.toLowerCase()) {
+          double openingStock = double.tryParse(stock["openingStock"].toString()) ?? 0;
+          double newStock = openingStock - quantityToDeduct;
+
+          if (newStock < 0) {
+            print("❌ Not enough stock for '$itemName'. Current: $openingStock, Needed: $quantityToDeduct");
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Not enough stock for '$itemName'! Available: $openingStock")),
+            );
+            return; // Stop if any item fails
+          }
+
+          // Update the stock
+          await _databaseRef
+              .child("users/$userId/Items/$key/stock")
+              .update({"openingStock": newStock});
+
+          print("✅ Stock updated for '$itemName'. New openingStock: $newStock");
+          itemFound = true;
+          break;
         }
+      }
 
-        // Update stock in Firebase
-        await _databaseRef.child("users/$userId/Items/$itemId/stock").update({
-          "openingStock": newStock,
-        });
+      if (!itemFound) {
+        print("❌ Item '$itemName' not found in Firebase.");
       }
     }
 
+    print("🎉 Stock update process completed!");
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Stock updated successfully"))
+      SnackBar(content: Text("✅ Stock updated successfully!")),
     );
   }
 
+  // Loading state
+  bool isLoading = false;
 
   @override
   void initState() {
@@ -359,114 +400,100 @@ class AddNewSales extends State<Add_new_Sales> {
         title: Text('Sale', style: TextStyle(color: Colors.black)),
         bottom:Prefered_underline_appbar(),
       ),
-       bottomNavigationBar:
-       BottomNavbarSaveButton(
-         leftButtonText: 'cencle',
-         rightButtonText: 'save',
-         leftButtonColor: Colors.white,
-         rightButtonColor: Colors.blueAccent,
-         onLeftButtonPressed: (){
-           Navigator.pop(context);
-         },
-         onRightButtonPressed: ()async{
-           User? user = FirebaseAuth.instance.currentUser;
-           if (user != null) {
-             await saveSaleData(user.uid);
-             _updateStockOnSave();
-           } else {
-             ScaffoldMessenger.of(context).showSnackBar(
-               SnackBar(content: Text('User not logged in!')),
-             );
-           }
-         },
-       ),
+      bottomNavigationBar:Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+                onPressed: (){
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                ),
+                child: Text("Cencle",style: TextStyle(fontWeight: FontWeight.bold,color: Colors.black),)
+            ),
+          ),
+          Expanded(
+            child: ElevatedButton(
+                onPressed: isLoading
+                    ? null // Disable the button while loading
+                    : () async {
+                  setState(() {
+                    isLoading = true; // Show loading indicator
+                  });
+                  try {
+                    User? user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      await saveSaleData(user.uid);
+                      _updateStockOnSave();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('User not logged in!')),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  } finally {
+                    setState(() {
+                      isLoading = false; // Hide loading indicator
+                    });
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                ),
+                child: Text("Save",style: TextStyle(fontWeight: FontWeight.bold,color: Colors.white),)
+            ),
+          ),
+        ],
+      ),
       body: Container(
         height: double.infinity,
         color:  Color(0xFFE8E8E8),
-        child: SingleChildScrollView(
-            physics: BouncingScrollPhysics(),
-            scrollDirection: Axis.vertical,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Container(
-                  color:Colors.white,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 16.0,right: 16.0,bottom: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: InkWell(
-                            onTap: () {
-                              showInvoiceSheet(context, (newInvoice) {
-                                setState(() {
-                                  invoice_no = newInvoice;
-                                });
-                              });
-                              },
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text("Recipt No.",style: TextStyle(color: Colors.grey),),
-                                Row(
-                                  children: [
-                                    Text("$invoice_no"),
-                                    SizedBox(width: 5,),
-                                    Icon(
-                                      Remix.arrow_down_s_line,
-                                      size: 20,
-                                      color: Colors.grey,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          height: 25,
-                          child: VerticalDivider(
-                            color: Colors.grey.shade300,
-                            thickness: 2,
-                            width: 20,
-                          ),
-                        ),
-                        Expanded(
-                          child: InkWell(
-                            onTap: () {
-                              showInvoiceSheet(context, (newInvoice) {
-                                setState(() {
-                                  invoice_no = newInvoice;
-                                });
-                              });                            },
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                InkWell(
-                                  onTap: () async {
-                                    DateTime? selectedDate = await showDatePicker(
-                                      context: context,
-                                      initialDate: DateTime.now(),
-                                      firstDate: DateTime(2000),
-                                      lastDate: DateTime(2100),
-                                    );
-                                    if (selectedDate != null) {
+        child: Column(
+          children: [
+            Expanded(
+              child:isLoading?Center(child: CircularProgressIndicator(color: Colors.black,),):
+              SingleChildScrollView(
+                  physics: BouncingScrollPhysics(),
+                  scrollDirection: Axis.vertical,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Container(
+                        color:Colors.white,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 16.0,right: 16.0,bottom: 16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    showInvoiceSheet(context, (newInvoice) {
                                       setState(() {
-                                        time = selectedDate;
+                                        invoice_no = newInvoice;
                                       });
-                                    }
-                                  },
+                                    });
+                                    },
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text("Date",style: TextStyle(color: Colors.grey),),
+                                      Text("Recipt No.",style: TextStyle(color: Colors.grey),),
                                       Row(
                                         children: [
-                                          Text(
-                                            "${time.day}/${time.month}/${time.year}",
-                                            style: TextStyle(fontSize: 15),
-                                          ),
+                                          Text("$invoice_no"),
+                                          SizedBox(width: 5,),
                                           Icon(
                                             Remix.arrow_down_s_line,
                                             size: 20,
@@ -477,448 +504,708 @@ class AddNewSales extends State<Add_new_Sales> {
                                     ],
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                SizedBox(height: 15,),
-
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      TypeAheadField<Map<String, dynamic>>(
-                        textFieldConfiguration: TextFieldConfiguration(
-                          controller: customer_controller,
-                          decoration: InputDecoration(
-                            labelText: "Customer",
-                            hintText: "Enter customer name",
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8.0),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: Colors.blue, width: 2.0),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8.0),
-                              borderSide: BorderSide(color: Colors.grey, width: 1.0),
-                            ),
-                          ),
-                        ),
-                        suggestionsCallback: (pattern) async {
-                          List<Map<String, dynamic>> results = await fetchParties(pattern);
-                          return results.isNotEmpty ? results : []; // Returns an empty list if no matches
-                        },
-                        itemBuilder: (context, Map<String, dynamic> suggestion) {
-                          return Material(
-                            color: Colors.white,
-                            child: ListTile(
-                              title: Text(
-                                suggestion["name"],
-                                style: TextStyle(color: Colors.black),
                               ),
-                              trailing: Text(
-                                suggestion["phone"],
-                                style: TextStyle(color: Colors.black54),
+                              SizedBox(
+                                height: 25,
+                                child: VerticalDivider(
+                                  color: Colors.grey.shade300,
+                                  thickness: 2,
+                                  width: 20,
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                        onSuggestionSelected: (Map<String, dynamic> suggestion) {
-                          customer_controller.text = suggestion["name"];
-                          phonenumber_controller.text = suggestion["phone"];
-                        },
-                        noItemsFoundBuilder: (context) => SizedBox.shrink(), // Hides "No items found"
-                      ),
-
-                      SizedBox(height: 16),
-                      TextField(
-                        keyboardType: TextInputType.phone,
-                        controller: phonenumber_controller,
-                        onChanged: (String value){
-                          setState(() {
-                            phonenumber_controller.text=value;
-                          });
-                        },
-                        decoration: InputDecoration(
-                          labelText: "Phone Number",
-                          hintText: "Phone number",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                            borderSide: BorderSide(color: Colors.blue, width: 2.0),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                            borderSide: BorderSide(color: Colors.grey, width: 1.0),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 24),
-                      OutlinedButton(
-                        onPressed: () {
-                          _navigateToAddItemScreen(context);
-                        },
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: Colors.blueAccent),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8.0),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add, color: Colors.blueAccent),
-                            SizedBox(width: 8),
-                            Text("Add Items", style: TextStyle(color: Colors.blueAccent)),
-                            SizedBox(width: 8),
-                            Text("(Optional)", style: TextStyle(color: Colors.grey)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                //Billed Items
-            // Billed Items Section
-            if (addedItems.isNotEmpty)
-              Container(
-                color: Colors.white,
-                padding: EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Expand/Collapse Header
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          isExpanded = !isExpanded;
-                        });
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.blue[300],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              "Billed Items",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                            Icon(
-                              isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                              color: Colors.white,
-                            )
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // Items List (Expandable)
-                    if (isExpanded)
-                      Container(
-                        margin: EdgeInsets.only(top: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.2),
-                              blurRadius: 5,
-                              spreadRadius: 2,
-                              offset: Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Padding(
-                          padding: EdgeInsets.all(12),
-                          child: Column(
-                            children: [
-                              ListView.builder(
-                                shrinkWrap: true,
-                                physics: NeverScrollableScrollPhysics(),
-                                itemCount: addedItems.length,
-                                itemBuilder: (context, index) {
-                                  // Convert values safely
-                                  double rate = double.tryParse(addedItems[index]["rate"].toString()) ?? 0.0;
-                                  double quantity = double.tryParse(addedItems[index]["quantity"].toString()) ?? 0.0;
-                                  double subtotal = rate * quantity;
-                                  double discount = double.tryParse(addedItems[index]["discount"].toString()) ?? 0.0;
-                                  double tax = double.tryParse(addedItems[index]["taxValue"].toString()) ?? 0.0;
-
-                                  double discountAmt = (subtotal * discount) / 100;
-                                  double taxAmt = ((subtotal - discountAmt) * tax) / 100;
-                                  double finalAmount = subtotal - discountAmt + taxAmt;
-
-                                  return GestureDetector(
-                                    onTap: () async {
-                                      final updatedItem = await Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => Add_Items_to_Sale(
-                                            title: "Edit Item",
-                                            existingItem: addedItems[index], // Pass the item data
-                                          ),
-                                        ),
-                                      );
-
-                                      // If the user saves the edited item, update the list
-                                      if (updatedItem != null) {
-                                        setState(() {
-                                          addedItems[index] = updatedItem; // Update the item in the list
-                                        });
-                                      }
-                                    },
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // Item Row with Delete Button
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    showInvoiceSheet(context, (newInvoice) {
+                                      setState(() {
+                                        invoice_no = newInvoice;
+                                      });
+                                    });                            },
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      InkWell(
+                                        onTap: () async {
+                                          DateTime? selectedDate = await showDatePicker(
+                                            context: context,
+                                            initialDate: DateTime.now(),
+                                            firstDate: DateTime(2000),
+                                            lastDate: DateTime(2100),
+                                          );
+                                          if (selectedDate != null) {
+                                            setState(() {
+                                              time = selectedDate;
+                                            });
+                                          }
+                                        },
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Expanded(
-                                              child: Text("#${index + 1}  ${addedItems[index]["itemName"]}",
-                                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                            ),
-                                            Text("₹ ${finalAmount.toStringAsFixed(2)}",
-                                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                            IconButton(
-                                              icon: Icon(Icons.delete, color: Colors.red),
-                                              onPressed: () {
-                                                setState(() {
-                                                  addedItems.removeAt(index); // ✅ Remove item
-                                                });
-                                              },
+                                            Text("Date",style: TextStyle(color: Colors.grey),),
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  "${time.day}/${time.month}/${time.year}",
+                                                  style: TextStyle(fontSize: 15),
+                                                ),
+                                                Icon(
+                                                  Remix.arrow_down_s_line,
+                                                  size: 20,
+                                                  color: Colors.grey,
+                                                ),
+                                              ],
                                             ),
                                           ],
                                         ),
-                                        SizedBox(height: 5),
-
-                                        // Item Subtotal
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text("Item Subtotal:", style: TextStyle(color: Colors.grey[600])),
-                                            Text(
-                                              "$rate ${addedItems[index]["unit"]} x $quantity = ₹ ${subtotal.toStringAsFixed(2)}",
-                                              style: TextStyle(color: Colors.grey[600]),
-                                            ),
-                                          ],
-                                        ),
-
-                                        SizedBox(height: 5),
-
-                                        // Discount Row
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            RichText(
-                                              text: TextSpan(
-                                                text: "Discount (%): ",
-                                                style: TextStyle(color: Colors.orange[700], fontSize: 14),
-                                                children: [
-                                                  TextSpan(
-                                                    text: discount.toString(),
-                                                    style: TextStyle(fontWeight: FontWeight.bold),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            Text(
-                                              "₹ ${discountAmt.toStringAsFixed(2)}",
-                                              style: TextStyle(color: Colors.orange[700], fontWeight: FontWeight.bold),
-                                            ),
-                                          ],
-                                        ),
-
-                                        SizedBox(height: 5),
-
-                                        // Tax Row
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text("GST (${tax.toString()}%):", style: TextStyle(color: Colors.grey[600])),
-                                            Text(
-                                              "₹ ${taxAmt.toStringAsFixed(2)}",
-                                              style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                                            ),
-                                          ],
-                                        ),
-
-                                        SizedBox(height: 10),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                              Divider(color: Colors.grey[300]),
-
-                              // ✅ Total Calculation Section
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text("Total Discount: ₹ ${calculateTotalDiscount().toStringAsFixed(2)}"),
-                                  Text("Total Tax: ₹ ${calculateTotalTax().toStringAsFixed(2)}"),
-                                ],
-                              ),
-                              SizedBox(height: 5),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text("Total Qty: ${calculateTotalQuantity()}"),
-                                  Text(
-                                    "Total Amount: ₹ ${calculateTotalFinalAmount().toStringAsFixed(2)}",
-                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                  ],
-                ),
-              ),
-
-
-
-               //total amount
-                Container(
-                  padding: EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                       Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
+                      SizedBox(height: 15,),
+              
+                      Container(
+                        color: Colors.white,
+                        padding: EdgeInsets.all(16),
+                        child: Column(
                           children: [
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                "Total Amount",
-                                style: TextStyle(fontSize: 16),
+                            TypeAheadField<Map<String, dynamic>>(
+                              textFieldConfiguration: TextFieldConfiguration(
+                                controller: customer_controller,
+                                decoration: InputDecoration(
+                                  labelText: "Customer",
+                                  hintText: "Enter customer name",
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                    borderSide: BorderSide(color: Colors.blue, width: 2.0),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                    borderSide: BorderSide(color: Colors.grey, width: 1.0),
+                                  ),
+                                ),
+                              ),
+                              suggestionsCallback: (pattern) async {
+                                List<Map<String, dynamic>> results = await fetchParties(pattern);
+                                return results.isNotEmpty ? results : []; // Returns an empty list if no matches
+                              },
+                              itemBuilder: (context, Map<String, dynamic> suggestion) {
+                                return Material(
+                                  color: Colors.white,
+                                  child: ListTile(
+                                    title: Text(
+                                      suggestion["name"],
+                                      style: TextStyle(color: Colors.black),
+                                    ),
+                                    trailing: Text(
+                                      suggestion["phone"],
+                                      style: TextStyle(color: Colors.black54),
+                                    ),
+                                  ),
+                                );
+                              },
+                              onSuggestionSelected: (Map<String, dynamic> suggestion) {
+                                customer_controller.text = suggestion["name"];
+                                phonenumber_controller.text = suggestion["phone"];
+                              },
+                              noItemsFoundBuilder: (context) => SizedBox.shrink(), // Hides "No items found"
+                            ),
+              
+                            SizedBox(height: 16),
+                            TextField(
+                              keyboardType: TextInputType.phone,
+                              controller: phonenumber_controller,
+                              onChanged: (String value){
+                                setState(() {
+                                  phonenumber_controller.text=value;
+                                });
+                              },
+                              decoration: InputDecoration(
+                                labelText: "Phone Number",
+                                hintText: "Phone number",
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8.0),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8.0),
+                                  borderSide: BorderSide(color: Colors.blue, width: 2.0),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8.0),
+                                  borderSide: BorderSide(color: Colors.grey, width: 1.0),
+                                ),
                               ),
                             ),
-                            SizedBox(
-                              width: 15, // Fixed width for rupee symbol
-                              child: Icon(Icons.currency_rupee, size: 15),
-                            ),
-                            Expanded(
-                              flex: 1,
-                              child: Stack(
+                            SizedBox(height: 24),
+                            OutlinedButton(
+                              onPressed: () {
+                                _navigateToAddItemScreen(context);
+                              },
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(color: Colors.blueAccent),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8.0),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  // Dotted Border (Only Bottom)
-                                  Positioned(
-                                    bottom: 0,
-                                    left: 0,
-                                    right: 0,
-                                    child: DottedBorder(
-                                      color: Colors.grey,
-                                      strokeWidth: 1.5, // Border thickness
-                                      dashPattern: [5, 3], // Dotted pattern
-                                      borderType: BorderType.Rect, // Rectangle border
-                                      padding: EdgeInsets.zero, // No padding inside
-                                      customPath: (size) => Path()
-                                        ..moveTo(0, size.height) // Start from bottom-left
-                                        ..lineTo(size.width, size.height), // Draw to bottom-right
-                                      child: SizedBox(
-                                        width: double.infinity,
-                                        height: 0, // Invisible container to align with textfield
-                                      ),
-                                    ),
-                                  ),
-
-                                  // TextField
-                                  TextField(
-                                    readOnly: addedItems.isNotEmpty,
-                                    controller: total_amount,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        total_amount.text = value;
-                                      });
-                                    },
-                                    keyboardType: TextInputType.number,
-                                    textAlign: TextAlign.end,
-                                    decoration: InputDecoration(
-                                      border: InputBorder.none, // Removes default border
-                                      contentPadding: EdgeInsets.only(bottom: 5), // Align text properly
-                                    ),
-                                  ),
+                                  Icon(Icons.add, color: Colors.blueAccent),
+                                  SizedBox(width: 8),
+                                  Text("Add Items", style: TextStyle(color: Colors.blueAccent)),
+                                  SizedBox(width: 8),
+                                  Text("(Optional)", style: TextStyle(color: Colors.grey)),
                                 ],
                               ),
                             ),
                           ],
                         ),
-
-                      if (total_amount.text != null && total_amount.text.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child:Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  "Received",
-                                  style: TextStyle(fontSize: 16),
+                      ),
+              
+                     // Billed Items Section
+                   if (addedItems.isNotEmpty)
+                    Container(
+                      color: Colors.white,
+                      padding: EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Expand/Collapse Header
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                isExpanded = !isExpanded;
+                              });
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.blue[300],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              padding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    "Billed Items",
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  Icon(
+                                    isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                                    color: Colors.white,
+                                  )
+                                ],
+                              ),
+                            ),
+                          ),
+              
+                          // Items List (Expandable)
+                          if (isExpanded)
+                            Container(
+                              margin: EdgeInsets.only(top: 5),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.grey.withOpacity(0.2),
+                                    blurRadius: 5,
+                                    spreadRadius: 2,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Padding(
+                                padding: EdgeInsets.all(12),
+                                child: Column(
+                                  children: [
+                                    ListView.builder(
+                                      shrinkWrap: true,
+                                      physics: NeverScrollableScrollPhysics(),
+                                      itemCount: addedItems.length,
+                                      itemBuilder: (context, index) {
+                                        // Convert values safely
+                                        double rate = double.tryParse(addedItems[index]["rate"].toString()) ?? 0.0;
+                                        double quantity = double.tryParse(addedItems[index]["quantity"].toString()) ?? 0.0;
+                                        double subtotal = rate * quantity;
+                                        double discount = double.tryParse(addedItems[index]["discount"].toString()) ?? 0.0;
+                                        double tax = double.tryParse(addedItems[index]["taxValue"].toString()) ?? 0.0;
+              
+                                        double discountAmt = (subtotal * discount) / 100;
+                                        double taxAmt = ((subtotal - discountAmt) * tax) / 100;
+                                        double finalAmount = subtotal - discountAmt + taxAmt;
+              
+                                        return GestureDetector(
+                                          onTap: () async {
+                                            final updatedItem = await Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => Add_Items_to_Sale(
+                                                  title: "Edit Item",
+                                                  existingItem: addedItems[index], // Pass the item data
+                                                ),
+                                              ),
+                                            );
+              
+                                            // If the user saves the edited item, update the list
+                                            if (updatedItem != null) {
+                                              setState(() {
+                                                addedItems[index] = updatedItem; // Update the item in the list
+                                              });
+                                            }
+                                          },
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              // Item Row with Delete Button
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Expanded(
+                                                    child: Text("#${index + 1}  ${addedItems[index]["itemName"]}",
+                                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                                  ),
+                                                  Text("₹ ${finalAmount.toStringAsFixed(2)}",
+                                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                                  IconButton(
+                                                    icon: Icon(Icons.delete, color: Colors.red),
+                                                    onPressed: () {
+                                                      setState(() {
+                                                        addedItems.removeAt(index); // ✅ Remove item
+                                                      });
+                                                    },
+                                                  ),
+                                                ],
+                                              ),
+                                              SizedBox(height: 5),
+              
+                                              // Item Subtotal
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Text("Item Subtotal:", style: TextStyle(color: Colors.grey[600])),
+                                                  Text(
+                                                    "$rate ${addedItems[index]["unit"]} x $quantity = ₹ ${subtotal.toStringAsFixed(2)}",
+                                                    style: TextStyle(color: Colors.grey[600]),
+                                                  ),
+                                                ],
+                                              ),
+              
+                                              SizedBox(height: 5),
+              
+                                              // Discount Row
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  RichText(
+                                                    text: TextSpan(
+                                                      text: "Discount (%): ",
+                                                      style: TextStyle(color: Colors.orange[700], fontSize: 14),
+                                                      children: [
+                                                        TextSpan(
+                                                          text: discount.toString(),
+                                                          style: TextStyle(fontWeight: FontWeight.bold),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    "₹ ${discountAmt.toStringAsFixed(2)}",
+                                                    style: TextStyle(color: Colors.orange[700], fontWeight: FontWeight.bold),
+                                                  ),
+                                                ],
+                                              ),
+              
+                                              SizedBox(height: 5),
+              
+                                              // Tax Row
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Text("GST (${tax.toString()}%):", style: TextStyle(color: Colors.grey[600])),
+                                                  Text(
+                                                    "₹ ${taxAmt.toStringAsFixed(2)}",
+                                                    style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                                                  ),
+                                                ],
+                                              ),
+              
+                                              SizedBox(height: 10),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    Divider(color: Colors.grey[300]),
+              
+                                    // ✅ Total Calculation Section
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text("Total Discount: ₹ ${calculateTotalDiscount().toStringAsFixed(2)}"),
+                                        Text("Total Tax: ₹ ${calculateTotalTax().toStringAsFixed(2)}"),
+                                      ],
+                                    ),
+                                    SizedBox(height: 5),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text("Total Qty: ${calculateTotalQuantity()}"),
+                                        Text(
+                                          "Total Amount: ₹ ${calculateTotalFinalAmount().toStringAsFixed(2)}",
+                                          style: TextStyle(fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ),
-                              SizedBox(
-                                width: 15, // Fixed width for rupee symbol
-                                child: Icon(Icons.currency_rupee, size: 15),
+                            ),
+                        ],
+                      ),
+                    ),
+              
+              
+              
+                     //total amount
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                             Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      "Total Amount",
+                                      style: TextStyle(fontSize: 16),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 15, // Fixed width for rupee symbol
+                                    child: Icon(Icons.currency_rupee, size: 15),
+                                  ),
+                                  Expanded(
+                                    flex: 1,
+                                    child: Stack(
+                                      children: [
+                                        // Dotted Border (Only Bottom)
+                                        Positioned(
+                                          bottom: 0,
+                                          left: 0,
+                                          right: 0,
+                                          child: DottedBorder(
+                                            color: Colors.grey,
+                                            strokeWidth: 1.5, // Border thickness
+                                            dashPattern: [5, 3], // Dotted pattern
+                                            borderType: BorderType.Rect, // Rectangle border
+                                            padding: EdgeInsets.zero, // No padding inside
+                                            customPath: (size) => Path()
+                                              ..moveTo(0, size.height) // Start from bottom-left
+                                              ..lineTo(size.width, size.height), // Draw to bottom-right
+                                            child: SizedBox(
+                                              width: double.infinity,
+                                              height: 0, // Invisible container to align with textfield
+                                            ),
+                                          ),
+                                        ),
+              
+                                        // TextField
+                                        TextField(
+                                          readOnly: addedItems.isNotEmpty,
+                                          controller: total_amount,
+                                          onChanged: (value) {
+                                            setState(() {
+                                              total_amount.text = value;
+                                            });
+                                          },
+                                          keyboardType: TextInputType.number,
+                                          textAlign: TextAlign.end,
+                                          decoration: InputDecoration(
+                                            border: InputBorder.none, // Removes default border
+                                            contentPadding: EdgeInsets.only(bottom: 5), // Align text properly
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                              Expanded(
-                                flex: 1,
-                                child: Stack(
+              
+                            if (total_amount.text != null && total_amount.text.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                child:Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    // Dotted Border (Only Bottom)
-                                    Positioned(
-                                      bottom: 0,
-                                      left: 0,
-                                      right: 0,
-                                      child: DottedBorder(
-                                        color: Colors.grey,
-                                        strokeWidth: 1.5, // Border thickness
-                                        dashPattern: [5, 3], // Dotted pattern
-                                        borderType: BorderType.Rect, // Rectangle border
-                                        padding: EdgeInsets.zero, // No padding inside
-                                        customPath: (size) => Path()
-                                          ..moveTo(0, size.height) // Start from bottom-left
-                                          ..lineTo(size.width, size.height), // Draw to bottom-right
-                                        child: SizedBox(
-                                          width: double.infinity,
-                                          height: 0, // Invisible container to align with textfield
+                                    Expanded(
+                                      flex: 2,
+                                      child: Text(
+                                        "Received",
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 15, // Fixed width for rupee symbol
+                                      child: Icon(Icons.currency_rupee, size: 15),
+                                    ),
+                                    Expanded(
+                                      flex: 1,
+                                      child: Stack(
+                                        children: [
+                                          // Dotted Border (Only Bottom)
+                                          Positioned(
+                                            bottom: 0,
+                                            left: 0,
+                                            right: 0,
+                                            child: DottedBorder(
+                                              color: Colors.grey,
+                                              strokeWidth: 1.5, // Border thickness
+                                              dashPattern: [5, 3], // Dotted pattern
+                                              borderType: BorderType.Rect, // Rectangle border
+                                              padding: EdgeInsets.zero, // No padding inside
+                                              customPath: (size) => Path()
+                                                ..moveTo(0, size.height) // Start from bottom-left
+                                                ..lineTo(size.width, size.height), // Draw to bottom-right
+                                              child: SizedBox(
+                                                width: double.infinity,
+                                                height: 0, // Invisible container to align with textfield
+                                              ),
+                                            ),
+                                          ),
+                                          // TextField
+                                          TextField(
+                                            controller: received_money,
+                                            onChanged: (value) {
+                                              setState(() {
+                                                received_money.text = value;
+                                              });
+                                            },
+                                            keyboardType: TextInputType.number,
+                                            textAlign: TextAlign.end,
+                                            decoration: InputDecoration(
+                                              border: InputBorder.none, // Removes default border
+                                              contentPadding: EdgeInsets.only(bottom: 5), // Align text properly
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+              
+                            if (total_amount.text != null && total_amount.text!.isNotEmpty)
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      "Balance Due",
+                                      style: TextStyle(fontSize: 16, color: Colors.green),
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 15, // Fixed width for rupee symbol
+                                    child: Icon(Icons.currency_rupee, size: 15, color: Colors.green),
+                                  ),
+                                  Expanded(
+                                    flex: 1,
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Text(
+                                        "${balance_due.text}",
+                                        style: TextStyle(color: Colors.green, fontSize: 16),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+              
+                      Container(
+                        color: Colors.white,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 16.0,right: 16,bottom: 16,top: 16),
+                          child: Column(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8.0),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text("Payment Type", style: TextStyle(fontSize: 15, color: Colors.black)),
+                                    Expanded(
+                                      child: Align(
+                                        alignment: Alignment.topRight,
+                                        child: GestureDetector(
+                                          onTap: (){
+                                            select_payment_method(context);
+                                          },
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                selectedPaymentType == "Cash"
+                                                    ? Icons.money
+                                                    : selectedPaymentType == "Cheque"
+                                                    ? Icons.receipt_long
+                                                    : Icons.help_outline, // Default icon when null
+                                                color: selectedPaymentType == "Cash"
+                                                    ? Colors.green
+                                                    : selectedPaymentType == "Cheque"
+                                                    ? Colors.yellow
+                                                    : Colors.grey, // Default color when null
+                                              ),
+                                              SizedBox(width: 4),
+                                              Text(
+                                                selectedPaymentType ?? "Select", // Fallback if null
+                                                style: TextStyle(
+                                                  fontSize: 15,
+                                                  color: Colors.black,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                              Icon(Icons.arrow_drop_down, color: Colors.grey),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     ),
-                                    // TextField
-                                    TextField(
-                                      controller: received_money,
-                                      onChanged: (value) {
-                                        setState(() {
-                                          received_money.text = value;
-                                        });
-                                      },
-                                      keyboardType: TextInputType.number,
-                                      textAlign: TextAlign.end,
-                                      decoration: InputDecoration(
-                                        border: InputBorder.none, // Removes default border
-                                        contentPadding: EdgeInsets.only(bottom: 5), // Align text properly
-                                      ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(height: 10,),
+                              Divider(),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text("State", style: TextStyle(fontSize: 15, color: Colors.black)),
+                                        Expanded(
+                                          child: Align(
+                                            alignment: Alignment.topRight,
+                                            child: GestureDetector(
+                                              onTap: () {
+                                                showModalBottomSheet(
+                                                  backgroundColor: Colors.white,
+                                                  context: context,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                                                  ),
+                                                  builder: (context) {
+                                                    return StatefulBuilder(
+                                                      builder: (context, setStateModal) {
+                                                        return Padding(
+                                                          padding: const EdgeInsets.all(16.0),
+                                                          child: Column(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              Text(
+                                                                "Select State",
+                                                                style: TextStyle(fontSize: 22),
+                                                              ),
+                                                              Divider(),
+                                                              Expanded(
+                                                                child: ListView(
+                                                                  children: [
+                                                                    for (var state in [
+                                                                      "Andhra Pradesh",
+                                                                      "Arunachal Pradesh",
+                                                                      "Assam",
+                                                                      "Bihar",
+                                                                      "Chhattisgarh",
+                                                                      "Goa",
+                                                                      "Gujarat",
+                                                                      "Haryana",
+                                                                      "Himachal Pradesh",
+                                                                      "Jharkhand",
+                                                                      "Karnataka",
+                                                                      "Kerala",
+                                                                      "Madhya Pradesh",
+                                                                      "Maharashtra",
+                                                                      "Manipur",
+                                                                      "Meghalaya",
+                                                                      "Mizoram",
+                                                                      "Nagaland",
+                                                                      "Odisha",
+                                                                      "Punjab",
+                                                                      "Rajasthan",
+                                                                      "Sikkim",
+                                                                      "Tamil Nadu",
+                                                                      "Telangana",
+                                                                      "Tripura",
+                                                                      "Uttar Pradesh",
+                                                                      "Uttarakhand",
+                                                                      "West Bengal",
+                                                                      "Andaman and Nicobar Islands",
+                                                                      "Chandigarh",
+                                                                      "Dadra and Nagar Haveli and Daman and Diu",
+                                                                      "Delhi",
+                                                                      "Jammu and Kashmir",
+                                                                      "Ladakh",
+                                                                      "Lakshadweep",
+                                                                      "Puducherry"
+                                                                    ])
+                                                                      ListTile(
+                                                                        title: Text(state),
+                                                                        onTap: () {
+                                                                          setState(() {
+                                                                            Country = state;
+                                                                          });
+                                                                          Navigator.pop(context);
+                                                                        },
+                                                                        tileColor: Country == state
+                                                                            ? Colors.grey[200]
+                                                                            : null,
+                                                                      ),
+                                                                  ],
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        );
+                                                      },
+                                                    );
+                                                  },
+                                                );
+                                              },
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    Country ?? "Select", // Fallback if null
+                                                    style: TextStyle(
+                                                      fontSize: 15,
+                                                      color: Colors.black,
+                                                      fontWeight: FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                  Icon(Icons.arrow_drop_down, color: Colors.grey),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -926,277 +1213,73 @@ class AddNewSales extends State<Add_new_Sales> {
                             ],
                           ),
                         ),
-
-                      if (total_amount.text != null && total_amount.text!.isNotEmpty)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
+                      ),
+                      SizedBox(height: 10,),
+              
+                      Container(
+                        color: Colors.white,
+                        padding: EdgeInsets.only(left: 16,right: 16.0,top: 8,bottom: 8),
+                        child: Column(
                           children: [
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                "Balance Due",
-                                style: TextStyle(fontSize: 16, color: Colors.green),
-                              ),
-                            ),
-                            SizedBox(
-                              width: 15, // Fixed width for rupee symbol
-                              child: Icon(Icons.currency_rupee, size: 15, color: Colors.green),
-                            ),
-                            Expanded(
-                              flex: 1,
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: Text(
-                                  "${balance_due.text}",
-                                  style: TextStyle(color: Colors.green, fontSize: 16),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8.0),
+                              child: SizedBox(
+                                height:75,
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: description_controller,
+                                        decoration: InputDecoration(
+                                          labelText: "Description",
+                                          hintText: 'Add Note',
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8.0),
+                                            borderSide: BorderSide(color: Colors.blue, width: 1.5),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(8.0),
+                                            borderSide: BorderSide(color: Colors.blue, width: 2.0),
+                                          ),
+                                          contentPadding: EdgeInsets.symmetric(
+                                            vertical: 12.0,
+                                            horizontal: 16.0,
+                                          ),
+                                        ),
+                                        maxLines: 3, // Allows multi-line input
+                                      ),
+                                    ),
+                                    SizedBox(width: 10.0),
+                                    GestureDetector(
+                                      onTap:(){
+                                        uploadImage();
+                                      }, // Show the dialog on tap
+                                      child: Container(
+                                        width: 75,
+                                        height: 75,
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: Colors.blue, width: 1.5),
+                                          borderRadius: BorderRadius.circular(8.0),
+                                          color: Colors.grey[100],
+                                        ),
+                                        child: image!=null?Image.memory(base64Decode(image!)):Icon(Remix.folder_image_line),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
                           ],
                         ),
-                    ],
-                  ),
-                ),
-
-                Container(
-                  color: Colors.white,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 16.0,right: 16,bottom: 16,top: 16),
-                    child: Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text("Payment Type", style: TextStyle(fontSize: 15, color: Colors.black)),
-                              Expanded(
-                                child: Align(
-                                  alignment: Alignment.topRight,
-                                  child: GestureDetector(
-                                    onTap: (){
-                                      select_payment_method(context);
-                                    },
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          selectedPaymentType == "Cash"
-                                              ? Icons.money
-                                              : selectedPaymentType == "Cheque"
-                                              ? Icons.receipt_long
-                                              : Icons.help_outline, // Default icon when null
-                                          color: selectedPaymentType == "Cash"
-                                              ? Colors.green
-                                              : selectedPaymentType == "Cheque"
-                                              ? Colors.yellow
-                                              : Colors.grey, // Default color when null
-                                        ),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          selectedPaymentType ?? "Select", // Fallback if null
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            color: Colors.black,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        Icon(Icons.arrow_drop_down, color: Colors.grey),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(height: 10,),
-                        Divider(),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: Column(
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text("State", style: TextStyle(fontSize: 15, color: Colors.black)),
-                                  Expanded(
-                                    child: Align(
-                                      alignment: Alignment.topRight,
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          showModalBottomSheet(
-                                            backgroundColor: Colors.white,
-                                            context: context,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                                            ),
-                                            builder: (context) {
-                                              return StatefulBuilder(
-                                                builder: (context, setStateModal) {
-                                                  return Padding(
-                                                    padding: const EdgeInsets.all(16.0),
-                                                    child: Column(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        Text(
-                                                          "Select State",
-                                                          style: TextStyle(fontSize: 22),
-                                                        ),
-                                                        Divider(),
-                                                        Expanded(
-                                                          child: ListView(
-                                                            children: [
-                                                              for (var state in [
-                                                                "Andhra Pradesh",
-                                                                "Arunachal Pradesh",
-                                                                "Assam",
-                                                                "Bihar",
-                                                                "Chhattisgarh",
-                                                                "Goa",
-                                                                "Gujarat",
-                                                                "Haryana",
-                                                                "Himachal Pradesh",
-                                                                "Jharkhand",
-                                                                "Karnataka",
-                                                                "Kerala",
-                                                                "Madhya Pradesh",
-                                                                "Maharashtra",
-                                                                "Manipur",
-                                                                "Meghalaya",
-                                                                "Mizoram",
-                                                                "Nagaland",
-                                                                "Odisha",
-                                                                "Punjab",
-                                                                "Rajasthan",
-                                                                "Sikkim",
-                                                                "Tamil Nadu",
-                                                                "Telangana",
-                                                                "Tripura",
-                                                                "Uttar Pradesh",
-                                                                "Uttarakhand",
-                                                                "West Bengal",
-                                                                "Andaman and Nicobar Islands",
-                                                                "Chandigarh",
-                                                                "Dadra and Nagar Haveli and Daman and Diu",
-                                                                "Delhi",
-                                                                "Jammu and Kashmir",
-                                                                "Ladakh",
-                                                                "Lakshadweep",
-                                                                "Puducherry"
-                                                              ])
-                                                                ListTile(
-                                                                  title: Text(state),
-                                                                  onTap: () {
-                                                                    setState(() {
-                                                                      Country = state;
-                                                                    });
-                                                                    Navigator.pop(context);
-                                                                  },
-                                                                  tileColor: Country == state
-                                                                      ? Colors.grey[200]
-                                                                      : null,
-                                                                ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  );
-                                                },
-                                              );
-                                            },
-                                          );
-                                        },
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              Country ?? "Select", // Fallback if null
-                                              style: TextStyle(
-                                                fontSize: 15,
-                                                color: Colors.black,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                            Icon(Icons.arrow_drop_down, color: Colors.grey),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                SizedBox(height: 10,),
-
-                Container(
-                  color: Colors.white,
-                  padding: EdgeInsets.only(left: 16,right: 16.0,top: 8,bottom: 8),
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: SizedBox(
-                          height:75,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: description_controller,
-                                  decoration: InputDecoration(
-                                    labelText: "Description",
-                                    hintText: 'Add Note',
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8.0),
-                                      borderSide: BorderSide(color: Colors.blue, width: 1.5),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8.0),
-                                      borderSide: BorderSide(color: Colors.blue, width: 2.0),
-                                    ),
-                                    contentPadding: EdgeInsets.symmetric(
-                                      vertical: 12.0,
-                                      horizontal: 16.0,
-                                    ),
-                                  ),
-                                  maxLines: 3, // Allows multi-line input
-                                ),
-                              ),
-                              SizedBox(width: 10.0),
-                              GestureDetector(
-                                onTap:(){
-                                  uploadImage();
-                                }, // Show the dialog on tap
-                                child: Container(
-                                  width: 75,
-                                  height: 75,
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.blue, width: 1.5),
-                                    borderRadius: BorderRadius.circular(8.0),
-                                    color: Colors.grey[100],
-                                  ),
-                                  child: image!=null?Image.memory(base64Decode(image!)):Icon(Remix.folder_image_line),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                       ),
+                      SizedBox(height: 10,),
+              
                     ],
                   ),
                 ),
-                SizedBox(height: 10,),
-
-              ],
             ),
-          ),
+          ],
+        ),
         ),
     );
   }

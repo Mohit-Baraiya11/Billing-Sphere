@@ -1,18 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:dotted_border/dotted_border.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:remixicon/remixicon.dart';
 
-import '../../../BottomNavbar_save_buttons.dart';
 
 
 class Payment_in extends StatefulWidget{
@@ -26,15 +23,13 @@ class PaymentIn extends State<Payment_in> {
   int invoice_no = 0;
 
   TextEditingController customer_controller = TextEditingController();
-  // String? customer_name;
-
   TextEditingController phonenumber_controller = TextEditingController();
-
   TextEditingController received_money = TextEditingController();
+
   String? selectedPaymentType = "Cash";
   String? Country = "Gujrat";
 
-  //description
+
   TextEditingController description_controller = TextEditingController();
 
   String? image;
@@ -53,6 +48,8 @@ class PaymentIn extends State<Payment_in> {
       }
     }
   }
+
+  bool isLoading = false;
 
   Future<void> savePaymentInData(String userId) async {
     DatabaseReference paymentInRef = FirebaseDatabase.instance.ref("users/$userId/Transactions/");
@@ -141,9 +138,8 @@ class PaymentIn extends State<Payment_in> {
         "total_amount": totalAmount.toString(),
       };
 
-      await partiesRef.child(phoneNumber).update(partyData); // ✅ This updates party details without overwriting transactions
+      await partiesRef.child(phoneNumber).update(partyData);
 
-      // ✅ Use update instead of set to append the new transaction instead of replacing existing ones
       await partiesRef.child(phoneNumber).child("transactions").update({
         transactionId: paymentData,
       });
@@ -206,7 +202,7 @@ class PaymentIn extends State<Payment_in> {
       appBar: AppBar(
         systemOverlayStyle: SystemUiOverlayStyle(
           statusBarColor: Colors.grey.shade400,
-          statusBarIconBrightness: Brightness.light, // Light icons (for dark backgrounds)
+          statusBarIconBrightness: Brightness.light,
         ),
         backgroundColor: Colors.white,
         title: Text('Payment - In'),
@@ -217,30 +213,69 @@ class PaymentIn extends State<Payment_in> {
               color: Colors.grey.withOpacity(0.5),
             )),
       ),
-      bottomNavigationBar:
-      BottomNavbarSaveButton(
-        leftButtonText: 'cencle',
-        rightButtonText: 'save',
-        leftButtonColor: Colors.white,
-        rightButtonColor: Colors.blueAccent,
-        onLeftButtonPressed: (){},
-        onRightButtonPressed: () async {
-          User? user = FirebaseAuth.instance.currentUser;
-          if (user != null) {
-            await savePaymentInData(user.uid);
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('User not logged in!')),
-            );
-          }
-       },
+      bottomNavigationBar:Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+                onPressed: (){
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                ),
+                child: Text("Cencle",style: TextStyle(fontWeight: FontWeight.bold,color: Colors.black),)
+            ),
+          ),
+          Expanded(
+            child: ElevatedButton(
+                onPressed: isLoading
+                    ? null // Disable the button while loading
+                    : () async {
+                  setState(() {
+                    isLoading = true; // Show loading indicator
+                  });
+                  try {
+                    User? user = FirebaseAuth.instance.currentUser;
+                    if (user != null) {
+                      await savePaymentInData(user.uid);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('User not logged in!')),
+                      );
+                    }
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  } finally {
+                    setState(() {
+                      isLoading = false; // Hide loading indicator
+                    });
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
+                ),
+                child: Text("Save",style: TextStyle(fontWeight: FontWeight.bold,color: Colors.white),)
+            ),
+          ),
+        ],
       ),
       body: Container(
         color:  Color(0xFFE8E8E8),
           child: Column(
             children: [
               Expanded(
-                child: SingleChildScrollView(
+                child:isLoading?Center(child: CircularProgressIndicator(color: Colors.black,),):
+                SingleChildScrollView(
                   scrollDirection: Axis.vertical,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -370,7 +405,7 @@ class PaymentIn extends State<Payment_in> {
                               ),
                               suggestionsCallback: (pattern) async {
                                 List<Map<String, dynamic>> results = await fetchParties(pattern);
-                                return results.isNotEmpty ? results : []; // Returns an empty list if no matches
+                                return results.isNotEmpty ? results : [];
                               },
                               itemBuilder: (context, Map<String, dynamic> suggestion) {
                                 return Material(
@@ -391,7 +426,7 @@ class PaymentIn extends State<Payment_in> {
                                 customer_controller.text = suggestion["name"];
                                 phonenumber_controller.text = suggestion["phone"];
                               },
-                              noItemsFoundBuilder: (context) => SizedBox.shrink(), // Hides "No items found"
+                              noItemsFoundBuilder: (context) => SizedBox.shrink(),
                             ),
 
                             SizedBox(height: 16),
@@ -766,7 +801,6 @@ class PaymentIn extends State<Payment_in> {
                     leading: Icon(Icons.add, color: Colors.blue),
                     title: Text("Add Bank A/c"),
                     onTap: () {
-                      // Handle "Add Bank A/c" logic
                       Navigator.pop(context);
                     },
                   ),

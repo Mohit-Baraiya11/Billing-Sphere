@@ -2,10 +2,9 @@ import 'package:billing_sphere/Home/Prefered_underline_appbar.dart';
 import 'package:billing_sphere/Items/Adjust_Stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:remixicon/remixicon.dart';
 
 class Items_Details extends StatefulWidget {
   final String itemId;
@@ -106,7 +105,7 @@ class _ItemsDetailState extends State<Items_Details> {
             ),
           ),
           IconButton(
-            icon: Icon(FlutterRemix.pencil_line, color: Colors.blue),
+            icon: Icon(Remix.pencil_line, color: Colors.blue),
             onPressed: () {},
           ),
         ],

@@ -2,8 +2,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
-
+import 'package:remixicon/remixicon.dart';
 import '../Prefered_underline_appbar.dart';
 
 class Party_Statement extends StatefulWidget {
@@ -75,6 +74,9 @@ class PartyStatement extends State<Party_Statement> {
       setState(() {
         isLoadingParties = false;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to load parties. Please try again.")),
+      );
     }
   }
 
@@ -100,6 +102,16 @@ class PartyStatement extends State<Party_Statement> {
             transaction['id'] = entry.key;
             return transaction;
           }).toList();
+          // Filter transactions by date range
+          transactions = transactions.where((txn) {
+            try {
+              DateTime txnDate = DateTime.parse(txn['date']);
+              return txnDate.isAfter(firstDate.subtract(Duration(days: 1))) &&
+                  txnDate.isBefore(lastDate.add(Duration(days: 1)));
+            } catch (e) {
+              return false; // Skip transactions with invalid dates
+            }
+          }).toList();
           isLoadingTransactions = false;
         });
       } else {
@@ -112,7 +124,11 @@ class PartyStatement extends State<Party_Statement> {
       print("Error fetching transactions: $e");
       setState(() {
         isLoadingTransactions = false;
+        transactions = [];
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to load transactions. Please try again.")),
+      );
     }
   }
 
@@ -170,6 +186,38 @@ class PartyStatement extends State<Party_Statement> {
                     onTap: () {
                       setState(() {
                         selectedTimeDuration = timeDurationOptions[index];
+                        // Update date range based on selection
+                        switch (selectedTimeDuration) {
+                          case 'Today':
+                            firstDate = DateTime.now();
+                            lastDate = DateTime.now();
+                            break;
+                          case 'This week':
+                            firstDate = DateTime.now().subtract(Duration(days: DateTime.now().weekday - 1));
+                            lastDate = DateTime.now();
+                            break;
+                          case 'This month':
+                            firstDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
+                            lastDate = DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
+                            break;
+                          case 'This quarter':
+                            int currentMonth = DateTime.now().month;
+                            int startMonth = currentMonth - (currentMonth - 1) % 3;
+                            firstDate = DateTime(DateTime.now().year, startMonth, 1);
+                            lastDate = DateTime(DateTime.now().year, startMonth + 2, 0);
+                            break;
+                          case 'This Financial Year':
+                            firstDate = DateTime(DateTime.now().year, 4, 1);
+                            lastDate = DateTime(DateTime.now().year + 1, 3, 31);
+                            break;
+                          case 'custom':
+                          // Keep the manually selected dates
+                            break;
+                        }
+                        // Refetch transactions if a party is selected
+                        if (selectedPartyId != null) {
+                          fetchTransactions(selectedPartyId!);
+                        }
                       });
                       Navigator.pop(context);
                     },
@@ -193,6 +241,11 @@ class PartyStatement extends State<Party_Statement> {
       if (picked != null) {
         setState(() {
           firstDate = picked;
+          selectedTimeDuration = 'custom'; // Set to custom when manually selecting dates
+          // Refetch transactions if a party is selected
+          if (selectedPartyId != null) {
+            fetchTransactions(selectedPartyId!);
+          }
         });
       }
     });
@@ -208,6 +261,11 @@ class PartyStatement extends State<Party_Statement> {
       if (picked != null) {
         setState(() {
           lastDate = picked;
+          selectedTimeDuration = 'custom'; // Set to custom when manually selecting dates
+          // Refetch transactions if a party is selected
+          if (selectedPartyId != null) {
+            fetchTransactions(selectedPartyId!);
+          }
         });
       }
     });
@@ -262,34 +320,70 @@ class PartyStatement extends State<Party_Statement> {
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   TextField(
                     controller: searchController,
                     decoration: InputDecoration(
                       hintText: "Search for a party",
                       prefixIcon: Icon(Icons.search, color: Colors.blue),
-                      suffixIcon: Icon(Icons.arrow_drop_down, color: Colors.blue),
+                      suffixIcon: selectedPartyId != null
+                          ? IconButton(
+                        icon: Icon(Icons.clear, color: Colors.blue),
+                        onPressed: () {
+                          setState(() {
+                            searchController.clear();
+                            selectedPartyId = null;
+                            transactions = [];
+                            filteredParties = parties; // Reset the filtered list
+                          });
+                        },
+                      )
+                          : Icon(Icons.arrow_drop_down, color: Colors.blue),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8.0),
                       ),
                     ),
-                    onTap: () {
+                    onChanged: (value) {
+                      // Filter parties as the user types
                       filterParties();
                     },
                   ),
-                  if (searchController.text.isNotEmpty && filteredParties.isNotEmpty)
+                  // Show the filtered parties in a dropdown-like list
+                  if (filteredParties.isNotEmpty && searchController.text.isNotEmpty)
                     Container(
-                      height: 200,
-                      color: Colors.white,
+                      constraints: BoxConstraints(maxHeight: 200), // Limit the height of the dropdown
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(8.0),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.2),
+                            spreadRadius: 1,
+                            blurRadius: 5,
+                            offset: Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      margin: EdgeInsets.only(top: 4.0),
                       child: ListView.builder(
+                        shrinkWrap: true,
                         itemCount: filteredParties.length,
                         itemBuilder: (context, index) {
                           return ListTile(
-                            title: Text(filteredParties[index]['name']),
+                            title: Text(
+                              filteredParties[index]['name'] ?? 'Unknown Party',
+                              style: TextStyle(fontSize: 16),
+                            ),
                             onTap: () {
                               setState(() {
+                                // Set the selected party ID and update the TextField with the party name
                                 selectedPartyId = filteredParties[index]['id'];
                                 searchController.text = filteredParties[index]['name'];
+                                // Clear the filtered parties list to hide the dropdown
+                                filteredParties = [];
+                                // Fetch transactions for the selected party
                                 fetchTransactions(selectedPartyId!);
                               });
                             },
@@ -350,7 +444,7 @@ class PartyStatement extends State<Party_Statement> {
                     ),
                   ),
                   SizedBox(width: 20),
-                  Icon(FlutterRemix.calendar_2_line, color: Colors.blueAccent, size: 15),
+                  Icon(Remix.calendar_2_line, color: Colors.blueAccent, size: 15),
                 ],
               ),
             ),

@@ -8,7 +8,6 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:remixicon/remixicon.dart';
 
@@ -1150,7 +1149,7 @@ class _Expenses_Details extends State<Expenses_Details> {
                                           borderRadius: BorderRadius.circular(8.0),
                                           color: Colors.grey[100],
                                         ),
-                                        child: Icon(FlutterRemix.camera_line),
+                                        child: Icon(Remix.camera_line),
                                       ),
                                     ),
                                   ],

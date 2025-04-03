@@ -30,7 +30,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_remix: ^0.0.3
   remixicon: ^1.1.0
   image_picker: ^0.8.7+4
   flutter_launcher_icons: ^0.13.1

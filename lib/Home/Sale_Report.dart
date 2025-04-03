@@ -2,9 +2,9 @@ import 'package:billing_sphere/Home/Prefered_underline_appbar.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:remixicon/remixicon.dart';
 
 class Sale_Report extends StatefulWidget {
   @override
@@ -175,7 +175,7 @@ class SaleReport extends State<Sale_Report> {
                       VerticalDivider(thickness: 1,),
                       Row(
                         children: [
-                          Icon(FlutterRemix.calendar_2_line, size: 16, color: Colors.blue,),
+                          Icon(Remix.calendar_2_line, size: 16, color: Colors.blue,),
                           SizedBox(width: 10,),
                           Text("Date", style: TextStyle(fontSize: 16)),
                           TextButton(

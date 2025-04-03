@@ -2,8 +2,8 @@
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:intl/intl.dart';
+import 'package:remixicon/remixicon.dart';
 
 class Notification_page extends StatefulWidget
 {
@@ -251,7 +251,7 @@ class _Notification extends State<Notification_page>
                     ),
                   ),
                   SizedBox(width: 20,),
-                  Icon(FlutterRemix.calendar_2_line,color: Colors.blueAccent,size: 15,),
+                  Icon(Remix.calendar_2_line,color: Colors.blueAccent,size: 15,),
                 ],
               ),
             ),
@@ -284,7 +284,7 @@ class _Notification extends State<Notification_page>
                     ),
                     IconButton(
                         onPressed: (){},
-                        icon: Icon(FlutterRemix.filter_line,color: Colors.blueAccent,)
+                        icon: Icon(Remix.filter_line,color: Colors.blueAccent,)
                     ),
                   ],
                 ),

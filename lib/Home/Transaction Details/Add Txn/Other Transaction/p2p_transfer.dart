@@ -1,6 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_remix/flutter_remix.dart';
+import 'package:remixicon/remixicon.dart';
 
 import '../../../BottomNavbar_save_buttons.dart';
 import '../../../Party Details/Add_new_party.dart';
@@ -106,7 +106,7 @@ class P2PTransfer extends State<P2P_Transfer> {
         bottom: Prefered_underline_appbar(),
         actions: [
           IconButton(
-            icon: Icon(FlutterRemix.settings_2_line),
+            icon: Icon(Remix.settings_2_line),
             onPressed: () {
               // Add settings functionality here
             },
@@ -579,7 +579,7 @@ class P2PTransfer extends State<P2P_Transfer> {
                                 borderRadius: BorderRadius.circular(8.0),
                                 color: Colors.grey[100],
                               ),
-                              child: Icon(FlutterRemix.camera_line),
+                              child: Icon(Remix.camera_line),
                             ),
                           ),
                         ],

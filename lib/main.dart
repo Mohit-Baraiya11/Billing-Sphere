@@ -4,7 +4,6 @@ import 'package:billing_sphere/Notification/Notification.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_remix/flutter_remix.dart';
 import 'package:remixicon/remixicon.dart';
 
 import 'Dashboard/Dashboard.dart';
@@ -79,10 +78,10 @@ class _MyHomePageState extends State<MyHomePage> {
             selectedItemColor: Colors.blue,
             unselectedItemColor: Colors.black54,
             items: const [
-              BottomNavigationBarItem(icon: Icon(FlutterRemix.home_8_line), label: 'Home'),
-              BottomNavigationBarItem(icon: Icon(FlutterRemix.dashboard_line), label: 'Dashboard'),
+              BottomNavigationBarItem(icon: Icon(Remix.home_8_line), label: 'Home'),
+              BottomNavigationBarItem(icon: Icon(Remix.dashboard_line), label: 'Dashboard'),
               BottomNavigationBarItem(icon: Icon(Remix.box_3_line), label: 'Items'),
-              BottomNavigationBarItem(icon: Icon(FlutterRemix.profile_line), label: 'Menu'),
+              BottomNavigationBarItem(icon: Icon(Remix.profile_line), label: 'Menu'),
             ],
           ),
           AnimatedPositioned(
@@ -137,17 +136,17 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                 border:Border.all(width: 1,color: Colors.blue),
                 borderRadius: BorderRadius.circular(90),
               ),
-              child: Icon(FlutterRemix.store_2_line, color: Colors.blue,size: 18,)
+              child: Icon(Remix.store_2_line, color: Colors.blue,size: 18,)
           ),
         ), // Replace with your store icon
       ),
-      title: const Text(
+      title: Text(
         "Mohit_Store",
         style: TextStyle(color: Colors.black),
       ),
       actions: [
         IconButton(
-          icon: const Icon(FlutterRemix.notification_3_line),
+          icon:Icon(Remix.notification_3_line),
           onPressed: () {
              Navigator.push(context, MaterialPageRoute(builder: (context)=>Notification_page()));
           },
@@ -155,7 +154,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
         Container(
           child: PopupMenuButton<String>(
             color: Colors.white,
-            icon: Icon(FlutterRemix.settings_2_line), // Settings icon
+            icon: Icon(Remix.settings_2_line), // Settings icon
             onSelected: (value) {
               if (value == "Profile") {
                 Navigator.push(
