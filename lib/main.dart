@@ -1,3 +1,4 @@
+import 'package:billing_sphere/API/Firebase_Api.dart';
 import 'package:billing_sphere/Compony%20Detail%20Page/Business_Details.dart';
 import 'package:billing_sphere/Items/Items_show.dart';
 import 'package:billing_sphere/Notification/Notification.dart';
@@ -22,6 +23,7 @@ void main() async {
       storageBucket: "billing-sphere-5f24e.firebasestorage.app",
     ),
   );
+  await Firebase_Api().initNotifications();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -151,44 +153,6 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
              Navigator.push(context, MaterialPageRoute(builder: (context)=>Notification_page()));
           },
         ),
-        Container(
-          child: PopupMenuButton<String>(
-            color: Colors.white,
-            icon: Icon(Remix.settings_2_line), // Settings icon
-            onSelected: (value) {
-              if (value == "Profile") {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => Business_Details()),
-                );
-              } else if (value == "Log Out") {
-                // Handle Log Out action
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: "Profile",
-                child: Row(
-                  children: [
-                    Icon(Icons.person, color: Colors.black), // Profile icon
-                    SizedBox(width: 8),
-                    Text("Profile"),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: "Log Out",
-                child: Row(
-                  children: [
-                    Icon(Icons.logout, color: Colors.black), // Log Out icon
-                    SizedBox(width: 8),
-                    Text("Log Out"),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        )
       ],
     );
   }

@@ -277,29 +277,100 @@ class _Payment_Out_Detail extends State<Payment_Out_Detail> {
 
   void deleteTransaction() async {
     User? user = FirebaseAuth.instance.currentUser;
-
     if (user == null) {
       print("No user logged in");
       return;
     }
 
     String userId = user.uid;
-    DatabaseReference ref = FirebaseDatabase.instance
-        .ref("users/$userId/Transactions/${widget.transactionId}");
+    String transactionId = widget.transactionId;
+
+    DatabaseReference transactionRef =
+    FirebaseDatabase.instance.ref("users/$userId/Transactions/$transactionId");
+    DatabaseReference bankRef =
+    FirebaseDatabase.instance.ref("users/$userId/Bank_accounts");
+    DatabaseReference partiesRef =
+    FirebaseDatabase.instance.ref("users/$userId/Parties");
 
     try {
-      await ref.remove(); // Delete the transaction from Firebase
-      print("Transaction deleted successfully");
+      DatabaseEvent event = await transactionRef.once();
+      if (!event.snapshot.exists) {
+        print("Transaction not found");
+        return;
+      }
 
-      // Show confirmation message
+      Map<dynamic, dynamic> transactionData =
+      event.snapshot.value as Map<dynamic, dynamic>;
+      double amount =
+          double.tryParse(transactionData["paid_amount"].toString()) ?? 0.0;
+      String paymentType = transactionData["paymentType"] ?? "Cash";
+      String phone = transactionData["phone"] ?? "";
+
+      // 1. Adjust Cash or Bank Balance
+      if (paymentType == "Cash") {
+        DatabaseReference cashRef = bankRef.child("Cash/total_balance");
+        DatabaseEvent cashEvent = await cashRef.once();
+        double cashBalance =
+            double.tryParse(cashEvent.snapshot.value.toString()) ?? 0.0;
+        await cashRef.set(cashBalance + amount);
+
+        // Remove cash transaction
+        await bankRef.child("Cash/cash_transaction/$transactionId").remove();
+      } else {
+        DatabaseReference bankAccRef =
+        bankRef.child("Bank/$paymentType/total_balance");
+        DatabaseEvent bankEvent = await bankAccRef.once();
+        double bankBalance =
+            double.tryParse(bankEvent.snapshot.value.toString()) ?? 0.0;
+        await bankAccRef.set(bankBalance + amount);
+
+        // Remove bank transaction
+        await bankRef
+            .child("Bank/$paymentType/bank_transaction/$transactionId")
+            .remove();
+      }
+
+      // 2. Remove from party and update total_amount
+      if (phone.isNotEmpty) {
+        DatabaseReference partyRef = partiesRef.child(phone);
+        DatabaseEvent partyEvent = await partyRef.once();
+
+        if (partyEvent.snapshot.exists) {
+          Map<dynamic, dynamic> partyData =
+          partyEvent.snapshot.value as Map<dynamic, dynamic>;
+          double currentPartyAmount =
+              double.tryParse(partyData["total_amount"].toString()) ?? 0.0;
+          double newTotal = currentPartyAmount - amount;
+
+          await partyRef.update({"total_amount": newTotal.toString()});
+
+          // Remove transaction from party's transactions
+          DatabaseReference partyTransRef =
+          partyRef.child("transactions/$transactionId");
+          await partyTransRef.remove();
+          print("✅ Party transaction removed.");
+
+          // Delete party if no transactions left
+          DatabaseEvent remainingTx =
+          await partyRef.child("transactions").once();
+          if (remainingTx.snapshot.value == null) {
+            await partyRef.remove();
+            print("🗑️ Party deleted (no transactions left)");
+          }
+        }
+      }
+
+      // 3. Remove main transaction
+      await transactionRef.remove();
+      print("✅ Transaction deleted successfully");
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Transaction deleted successfully!")),
       );
 
-      // Navigate back to the previous screen
       Navigator.pop(context);
-    } catch (error) {
-      print("Error deleting transaction: $error");
+    } catch (e) {
+      print("❌ Error deleting transaction: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Failed to delete transaction!")),
       );

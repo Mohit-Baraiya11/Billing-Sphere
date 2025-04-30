@@ -27,8 +27,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:remixicon/remixicon.dart';
 
-class TransactionDetailsTab extends StatefulWidget
-{
+class TransactionDetailsTab extends StatefulWidget {
   @override
   State<StatefulWidget> createState() => _TransactionDetailsTab();
 }
@@ -46,11 +45,20 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
   List<Map<String, dynamic>> transactions = [];
   bool isLoading = true;
 
+  // Add TextEditingController for search bar
+  final TextEditingController _searchController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
     fetchTransactions();
-    // print(filter_apply);
+    _searchController.addListener(_filterTransactions); // Listen to search input changes
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose(); // Dispose controller to avoid memory leaks
+    super.dispose();
   }
 
   Future<void> fetchTransactions() async {
@@ -97,8 +105,8 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
             balance = value["balance_due"]?.toString() ?? "0.00";
           } else if (type == "payment-out") {
             name = value["party_name"] ?? "Unknown";
-            total = value["paid"]?.toString() ?? "0.00";
-            balance = value["unused"]?.toString() ?? "0.00";
+            total = value["paid_amount"]?.toString() ?? "0.00";
+            balance = value["balance_due"]?.toString() ?? "0.00";
           } else if (type == "expenses") {
             name = value["category"] ?? value["expenses_category"] ?? "Unknown";
             total = value["amount"]?.toString() ?? "0.00";
@@ -137,6 +145,12 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
       }
     });
   }
+
+  // Filter transactions based on search query
+  void _filterTransactions() {
+    setState(() {});
+  }
+
   Future<void> generatePaymentInPDF(Map<String, dynamic> transaction) async {
     final pdf = pw.Document();
     final font = await PdfGoogleFonts.nunitoSansRegular();
@@ -346,7 +360,794 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
     await OpenFile.open(filePath);
   }
 
-// Helper function to convert amount to words
+  Future<void> generateSalePDF(String transactionId) async {
+    final pdf = pw.Document();
+    final font = await PdfGoogleFonts.nunitoSansRegular();
+    final fontBold = await PdfGoogleFonts.nunitoSansBold();
+
+    // Fetch transaction data based on transactionId
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print("No user logged in");
+      return;
+    }
+
+    String userId = user.uid;
+    DatabaseReference ref = FirebaseDatabase.instance.ref("users/$userId/Transactions/$transactionId");
+
+    final snapshot = await ref.get();
+    if (!snapshot.exists) {
+      print("Transaction not found");
+      return;
+    }
+
+    Map<dynamic, dynamic> data = Map.from(snapshot.value as Map<dynamic, dynamic>);
+    String name = data["customer"] ?? "Unknown";
+    String phone = data["phone"] ?? "";
+    String total = data["total_amount"]?.toString() ?? "0.00";
+    String balance = data["balance_due"]?.toString() ?? "0.00";
+    String description = data["description"] ?? "Sale transaction";
+    String date = data["date"] ?? "N/A";
+    List<Map<String, dynamic>> items = [];
+    if (data["items"] != null) {
+      items = (data["items"] as Map).entries.map((e) => Map<String, dynamic>.from(e.value)).toList();
+    }
+    String businessName = data["businessName"] ?? "Your Business Name";
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Header
+              pw.Text(
+                'Sale Invoice',
+                style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                  font: fontBold,
+                ),
+              ),
+              pw.SizedBox(height: 20),
+
+              // Customer Info
+              pw.Text(
+                name,
+                style: pw.TextStyle(
+                  fontSize: 16,
+                  font: fontBold,
+                ),
+              ),
+              pw.Text(
+                'Contact No: $phone',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  font: font,
+                ),
+              ),
+              pw.SizedBox(height: 20),
+
+              // Invoice Details Table
+              pw.Table(
+                border: pw.TableBorder.all(width: 0.5),
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(1),
+                  1: const pw.FlexColumnWidth(1),
+                },
+                children: [
+                  pw.TableRow(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'Customer:',
+                              style: pw.TextStyle(
+                                font: font,
+                                fontSize: 12,
+                              ),
+                            ),
+                            pw.Text(
+                              name,
+                              style: pw.TextStyle(
+                                font: fontBold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            pw.Text(
+                              'Contact No: $phone',
+                              style: pw.TextStyle(
+                                font: font,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'Invoice Details:',
+                              style: pw.TextStyle(
+                                font: font,
+                                fontSize: 12,
+                              ),
+                            ),
+                            pw.Text(
+                              'No: $transactionId',
+                              style: pw.TextStyle(
+                                font: fontBold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            pw.Text(
+                              'Date: $date',
+                              style: pw.TextStyle(
+                                font: fontBold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // Items Table
+              pw.Text(
+                'Items:',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 16,
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Table(
+                border: pw.TableBorder.all(width: 0.5),
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(2),
+                  1: const pw.FlexColumnWidth(1),
+                  2: const pw.FlexColumnWidth(1),
+                  3: const pw.FlexColumnWidth(1),
+                  4: const pw.FlexColumnWidth(1),
+                  5: const pw.FlexColumnWidth(1),
+                },
+                children: [
+                  pw.TableRow(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Item Name', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Quantity', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Rate', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Subtotal', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Tax', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Unit', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                  ...items.map<pw.TableRow>((item) {
+                    return pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text(item["itemName"] ?? "N/A", style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text(item["quantity"]?.toString() ?? "N/A", style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text('₹${item["rate"]?.toString() ?? "0.00"}', style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text('₹${item["subtotal"]?.toString() ?? "0.00"}', style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text('₹${item["taxValue"]?.toString() ?? "0.00"}', style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text(item["unit"] ?? "N/A", style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // Amount Section
+              pw.Table(
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(3),
+                  1: const pw.FlexColumnWidth(2),
+                },
+                children: [
+                  pw.TableRow(
+                    children: [
+                      pw.Container(), // Empty cell
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            'Total Amount: ₹$total',
+                            style: pw.TextStyle(
+                              font: fontBold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          pw.SizedBox(height: 10),
+                          pw.Text(
+                            'Balance Due: ₹$balance',
+                            style: pw.TextStyle(
+                              font: fontBold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          pw.SizedBox(height: 10),
+                          pw.Text(
+                            'Amount in Words:',
+                            style: pw.TextStyle(
+                              font: font,
+                              fontSize: 12,
+                            ),
+                          ),
+                          pw.Text(
+                            _amountToWords(double.parse(total ?? "0")),
+                            style: pw.TextStyle(
+                              font: fontBold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // Divider
+              pw.Divider(thickness: 1),
+              pw.SizedBox(height: 10),
+
+              // Description
+              pw.Text(
+                'Description:',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 12,
+                ),
+              ),
+              pw.Text(
+                description,
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 12,
+                ),
+              ),
+              pw.SizedBox(height: 30),
+
+              // Footer
+              pw.Text(
+                'For $businessName:',
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 12,
+                ),
+              ),
+              pw.SizedBox(height: 40),
+              pw.Text(
+                'Authorized Signatory',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 12,
+                ),
+              ),
+              pw.SizedBox(height: 20),
+            ],
+          );
+        },
+      ),
+    );
+
+    // Save and open the PDF
+    final directory = await getApplicationDocumentsDirectory();
+    final filePath = '${directory.path}/Sale_Invoice_$transactionId.pdf';
+    final file = File(filePath);
+    await file.writeAsBytes(await pdf.save());
+    await OpenFile.open(filePath);
+  }
+
+  Future<void> generatePurchasePDF(String transactionId) async {
+    final pdf = pw.Document();
+    final font = await PdfGoogleFonts.nunitoSansRegular();
+    final fontBold = await PdfGoogleFonts.nunitoSansBold();
+
+    // Fetch transaction data based on transactionId
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print("No user logged in");
+      return;
+    }
+
+    String userId = user.uid;
+    DatabaseReference ref = FirebaseDatabase.instance.ref("users/$userId/Transactions/$transactionId");
+
+    final snapshot = await ref.get();
+    if (!snapshot.exists) {
+      print("Transaction not found");
+      return;
+    }
+
+    Map<dynamic, dynamic> data = Map.from(snapshot.value as Map<dynamic, dynamic>);
+    String name = data["customer"] ?? "Unknown";
+    String phone = data["phone"] ?? "";
+    String total = data["total_amount"]?.toString() ?? "0.00";
+    String balance = data["balance_due"]?.toString() ?? "0.00";
+    String description = data["description"] ?? "Sale transaction";
+    String date = data["date"] ?? "N/A";
+    List<Map<String, dynamic>> items = [];
+    if (data["items"] != null) {
+      items = (data["items"] as Map).entries.map((e) => Map<String, dynamic>.from(e.value)).toList();
+    }
+    String businessName = data["businessName"] ?? "Your Business Name";
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Header
+              pw.Text(
+                'Purchase',
+                style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                  font: fontBold,
+                ),
+              ),
+              pw.SizedBox(height: 20),
+
+              // Customer Info
+              pw.Text(
+                name,
+                style: pw.TextStyle(
+                  fontSize: 16,
+                  font: fontBold,
+                ),
+              ),
+              pw.Text(
+                'Contact No: $phone',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  font: font,
+                ),
+              ),
+              pw.SizedBox(height: 20),
+
+              // Invoice Details Table
+              pw.Table(
+                border: pw.TableBorder.all(width: 0.5),
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(1),
+                  1: const pw.FlexColumnWidth(1),
+                },
+                children: [
+                  pw.TableRow(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'Customer:',
+                              style: pw.TextStyle(
+                                font: font,
+                                fontSize: 12,
+                              ),
+                            ),
+                            pw.Text(
+                              name,
+                              style: pw.TextStyle(
+                                font: fontBold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            pw.Text(
+                              'Contact No: $phone',
+                              style: pw.TextStyle(
+                                font: font,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(
+                              'Invoice Details:',
+                              style: pw.TextStyle(
+                                font: font,
+                                fontSize: 12,
+                              ),
+                            ),
+                            pw.Text(
+                              'No: $transactionId',
+                              style: pw.TextStyle(
+                                font: fontBold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            pw.Text(
+                              'Date: $date',
+                              style: pw.TextStyle(
+                                font: fontBold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // Items Table
+              pw.Text(
+                'Items:',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 16,
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Table(
+                border: pw.TableBorder.all(width: 0.5),
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(2),
+                  1: const pw.FlexColumnWidth(1),
+                  2: const pw.FlexColumnWidth(1),
+                  3: const pw.FlexColumnWidth(1),
+                  4: const pw.FlexColumnWidth(1),
+                  5: const pw.FlexColumnWidth(1),
+                },
+                children: [
+                  pw.TableRow(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Item Name', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Quantity', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Rate', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Subtotal', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Tax', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(4.0),
+                        child: pw.Text('Unit', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                  ...items.map<pw.TableRow>((item) {
+                    return pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text(item["itemName"] ?? "N/A", style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text(item["quantity"]?.toString() ?? "N/A", style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text('₹${item["rate"]?.toString() ?? "0.00"}', style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text('₹${item["subtotal"]?.toString() ?? "0.00"}', style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text('₹${item["taxValue"]?.toString() ?? "0.00"}', style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4.0),
+                          child: pw.Text(item["unit"] ?? "N/A", style: pw.TextStyle(font: font, fontSize: 12)),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // Amount Section
+              pw.Table(
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(3),
+                  1: const pw.FlexColumnWidth(2),
+                },
+                children: [
+                  pw.TableRow(
+                    children: [
+                      pw.Container(), // Empty cell
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            'Total Amount: ₹$total',
+                            style: pw.TextStyle(
+                              font: fontBold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          pw.SizedBox(height: 10),
+                          pw.Text(
+                            'Balance Due: ₹$balance',
+                            style: pw.TextStyle(
+                              font: fontBold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          pw.SizedBox(height: 10),
+                          pw.Text(
+                            'Amount in Words:',
+                            style: pw.TextStyle(
+                              font: font,
+                              fontSize: 12,
+                            ),
+                          ),
+                          pw.Text(
+                            _amountToWords(double.parse(total ?? "0")),
+                            style: pw.TextStyle(
+                              font: fontBold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // Divider
+              pw.Divider(thickness: 1),
+              pw.SizedBox(height: 10),
+
+              // Description
+              pw.Text(
+                'Description:',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 12,
+                ),
+              ),
+              pw.Text(
+                description,
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 12,
+                ),
+              ),
+              pw.SizedBox(height: 30),
+
+              // Footer
+              pw.Text(
+                'For $businessName:',
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 12,
+                ),
+              ),
+              pw.SizedBox(height: 40),
+              pw.Text(
+                'Authorized Signatory',
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 12,
+                ),
+              ),
+              pw.SizedBox(height: 20),
+            ],
+          );
+        },
+      ),
+    );
+
+    // Save and open the PDF
+    final directory = await getApplicationDocumentsDirectory();
+    final filePath = '${directory.path}/Sale_Invoice_$transactionId.pdf';
+    final file = File(filePath);
+    await file.writeAsBytes(await pdf.save());
+    await OpenFile.open(filePath);
+  }
+
+  Future<void> generatePaymentOutPDF(Map<String, dynamic> transaction) async {
+    final pdf = pw.Document();
+    final font = await PdfGoogleFonts.nunitoSansRegular();
+    final fontBold = await PdfGoogleFonts.nunitoSansBold();
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Header
+              pw.Text(
+                'Payment-Out',
+                style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                  font: fontBold,
+                ),
+              ),
+              pw.SizedBox(height: 20),
+
+              // Party Info
+              pw.Text(
+                '${transaction["name"] ?? "N/A"}',
+                style: pw.TextStyle(fontSize: 16, font: fontBold),
+              ),
+              pw.Text(
+                'Email: ${transaction["email"] ?? "N/A"}',
+                style: pw.TextStyle(fontSize: 12, font: font),
+              ),
+              pw.SizedBox(height: 20),
+
+              // Receipt Details Table
+              pw.Table(
+                border: pw.TableBorder.all(width: 0.5),
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(1),
+                  1: const pw.FlexColumnWidth(1),
+                },
+                children: [
+                  pw.TableRow(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text('Paid To:', style: pw.TextStyle(font: font, fontSize: 12)),
+                            pw.Text(transaction["name"] ?? "N/A", style: pw.TextStyle(font: fontBold, fontSize: 14)),
+                            pw.Text('Contact No: ${transaction["phone"] ?? "N/A"}', style: pw.TextStyle(font: font, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.all(8.0),
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text('Receipt Details:', style: pw.TextStyle(font: font, fontSize: 12)),
+                            pw.Text('No: ${transaction["id"]}', style: pw.TextStyle(font: fontBold, fontSize: 14)),
+                            pw.Text('Date: ${transaction["date"]}', style: pw.TextStyle(font: fontBold, fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // Amount Section
+              pw.Table(
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(3),
+                  1: const pw.FlexColumnWidth(2),
+                },
+                children: [
+                  pw.TableRow(
+                    children: [
+                      pw.Container(), // Empty cell
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            'Paid: ₹${transaction["total"] ?? "0.00"}',
+                            style: pw.TextStyle(font: fontBold, fontSize: 16),
+                          ),
+                          pw.SizedBox(height: 10),
+                          pw.Text('Amount in Words:', style: pw.TextStyle(font: font, fontSize: 12)),
+                          pw.Text(
+                            _amountToWords(double.tryParse(transaction["paid_amount"]?.toString() ?? "0") ?? 0),
+                            style: pw.TextStyle(font: fontBold, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // Divider
+              pw.Divider(thickness: 1),
+              pw.SizedBox(height: 10),
+
+              // Description
+              pw.Text('Description:', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+              pw.Text(transaction["description"] ?? "Payment made", style: pw.TextStyle(font: font, fontSize: 12)),
+              pw.SizedBox(height: 30),
+
+              // Footer
+              pw.Text('For ${transaction["businessName"] ?? "Your Business Name"}:', style: pw.TextStyle(font: font, fontSize: 12)),
+              pw.SizedBox(height: 40),
+              pw.Text('Authorized Signatory', style: pw.TextStyle(font: fontBold, fontSize: 12)),
+              pw.SizedBox(height: 20),
+            ],
+          );
+        },
+      ),
+    );
+
+    // Save and open the PDF
+    final directory = await getApplicationDocumentsDirectory();
+    final filePath = '${directory.path}/Payment_Out_${transaction["id"]}.pdf';
+    final file = File(filePath);
+    await file.writeAsBytes(await pdf.save());
+    await OpenFile.open(filePath);
+  }
+
+  // Helper function to convert amount to words
   String _amountToWords(double amount) {
     // Implement your amount to words conversion logic here
     // You can use a package like 'number_to_words' or implement your own
@@ -355,6 +1156,20 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
 
   @override
   Widget build(BuildContext context) {
+    // Filter transactions based on search query
+    List<Map<String, dynamic>> filteredTransactions = transactions.where((transaction) {
+      final searchQuery = _searchController.text.toLowerCase();
+      return searchQuery.isEmpty ||
+          transaction["name"].toString().toLowerCase().contains(searchQuery) ||
+          transaction["transactionType"].toString().toLowerCase().contains(searchQuery) ||
+          transaction["date"].toString().toLowerCase().contains(searchQuery);
+    }).toList();
+
+    // Apply filter options
+    filteredTransactions = filteredTransactions
+        .where((transaction) => filter_apply.isEmpty || filter_apply.contains(transaction["transactionType"]))
+        .toList();
+
     return Scaffold(
       backgroundColor: Colors.blue.shade50,
       body: Container(
@@ -434,6 +1249,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                           children: [
                             Expanded(
                               child: TextField(
+                                controller: _searchController, // Attach controller
                                 decoration: InputDecoration(
                                   hintText: "Search for transaction",
                                   hintStyle: TextStyle(fontSize: 13, color: Colors.grey),
@@ -527,6 +1343,8 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                                                 setModalState(() {
                                                                   filterOptions.updateAll((key, value) => false);
                                                                   filter_apply.clear();
+                                                                  setState(() {}); // Trigger rebuild to clear filters
+                                                                  Navigator.pop(context);
                                                                 });
                                                               },
                                                               child: Text(
@@ -546,6 +1364,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                                                 ),
                                                               ),
                                                               onPressed: () {
+                                                                setState(() {}); // Trigger rebuild with applied filters
                                                                 Navigator.pop(context);
                                                               },
                                                               child: Text(
@@ -582,26 +1401,28 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                     // Transactions List Section
                     isLoading
                         ? Center(child: CircularProgressIndicator())
-                        : transactions.isEmpty
-                        ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              height: MediaQuery.of(context).size.height,
-                              width: 100,
-                              child: Image.asset("Assets/Images/note.png"),
-                            ),
-                            Text(
-                              "Hey! You have not added any transactions yet.\nAdd your first transaction now.",
-                              textAlign: TextAlign.center,
-                            ),
-                             SizedBox(height: 20),
-                       ],
-                      )
+                        : filteredTransactions.isEmpty
+                        ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(height: 20), // Small padding from top
+                          Image.asset(
+                            "Assets/Images/note.png",
+                            height: 100, // Fixed height for image
+                            width: 100,
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            "Hey! You have not added any transactions yet.\nAdd your first transaction now.",
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: 20),
+                        ],
+                      ),
+                    )
                         : Column(
-                      children: transactions
-                          .where((transaction) =>
-                      filter_apply.isEmpty || filter_apply.contains(transaction["transactionType"]))
+                      children: filteredTransactions
                           .map((transaction) => GestureDetector(
                         onTap: () {
                           if (transaction["transactionType"] == "payment-in") {
@@ -669,7 +1490,8 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                     Column(
                                       crossAxisAlignment: CrossAxisAlignment.end,
                                       children: [
-                                        Text("Date",
+                                        Text(
+                                          "Date",
                                           style: TextStyle(
                                             fontSize: 12,
                                             color: Colors.grey,
@@ -791,6 +1613,15 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
                                                 if (transaction["transactionType"] == "payment-in") {
                                                   await generatePaymentInPDF(transaction);
                                                 }
+                                                if (transaction["transactionType"] == "sale") {
+                                                  await generateSalePDF(transaction["id"]);
+                                                }
+                                                if (transaction["transactionType"] == "purchase") {
+                                                  await generatePurchasePDF(transaction["id"]);
+                                                }
+                                                if (transaction["transactionType"] == "payment-out") {
+                                                  await generatePaymentOutPDF(transaction);
+                                                }
                                               },
                                               child: Container(
                                                 height: screenHeight * 0.16,
@@ -885,7 +1716,7 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
               ),
             ),
             Positioned(
-              bottom: 20,
+              bottom: 20, // Changed from 0 to 20 to position button 20 pixels from the bottom
               left: 0,
               right: 0,
               child: Center(
@@ -920,6 +1751,9 @@ class _TransactionDetailsTab extends State<TransactionDetailsTab> {
     );
   }
 }
+
+// ... (QuickLink widget and other methods like ShowAll, pop_up_modal remain unchanged)
+
 var iconOf_moreOption = [
   Remix.bank_line,
   Remix.sticky_note_line,
@@ -930,8 +1764,7 @@ var labelOf_moreOption = [
   "All Txns Report",
   "Profit & Loss",
 ];
-void ShowAll(BuildContext context)
-{
+void ShowAll(BuildContext context) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -940,67 +1773,65 @@ void ShowAll(BuildContext context)
         color: Colors.white,
         height: MediaQuery.of(context).size.height * 0.20,
         child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Padding(
             padding: const EdgeInsets.all(8.0),
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Sale Transactions Header
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 18.0,top: 8.0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            "More Option",
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                          ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Sale Transactions Header
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 18.0, top: 8.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          "More Option",
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                         ),
-                        InkWell(
-                          onTap: () {
-                            Navigator.of(context).pop();
-                          },
-                          child: Icon(Icons.close),
-                        ),
-                      ],
-                    ),
-                  ),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      childAspectRatio: 1.5,
-                    ),
-                    itemBuilder: (context, index) {
-                      return InkWell(
-                        onTap: (){
-                          if(index==0){
-                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>Add_Bank_Account()));
-                          }
-                          if(index==1){
-                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>All_Transaction()));
-                          }
-                          if(index==2){
-                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>Profit_and_loss()));
-                          }
+                      ),
+                      InkWell(
+                        onTap: () {
+                          Navigator.of(context).pop();
                         },
-                        child: QuickLink(
-                          icon: iconOf_moreOption[index],
-                          label: labelOf_moreOption[index],
-                          backgroundColor: default_color,
-                        ),
-                      );
-                    },
-                    itemCount: iconOf_moreOption.length,
+                        child: Icon(Icons.close),
+                      ),
+                    ],
                   ),
-
-                ],
-              ),
+                ),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    childAspectRatio: 1.5,
+                  ),
+                  itemBuilder: (context, index) {
+                    return InkWell(
+                      onTap: () {
+                        if (index == 0) {
+                          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => Add_Bank_Account()));
+                        }
+                        if (index == 1) {
+                          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => All_Transaction()));
+                        }
+                        if (index == 2) {
+                          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => Profit_and_loss()));
+                        }
+                      },
+                      child: QuickLink(
+                        icon: iconOf_moreOption[index],
+                        label: labelOf_moreOption[index],
+                        backgroundColor: default_color,
+                      ),
+                    );
+                  },
+                  itemCount: iconOf_moreOption.length,
+                ),
+              ],
             ),
           ),
-
+        ),
       );
     },
   );
@@ -1012,7 +1843,6 @@ var saleTransaction_label = [
   "Purchase",
   "Payment-Out",
   "Expenses",
-  "P2P Transfer",
 ];
 var saleTransaction_icon = [
   Remix.download_cloud_2_line,
@@ -1020,7 +1850,6 @@ var saleTransaction_icon = [
   Remix.shopping_cart_2_line,
   Remix.money_cny_box_line,
   Remix.wallet_3_line,
-  Remix.p2p_line,
 ];
 
 void pop_up_modal(BuildContext context) {
@@ -1041,7 +1870,7 @@ void pop_up_modal(BuildContext context) {
                 children: [
                   // Sale Transactions Header
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 18.0,top: 8.0),
+                    padding: const EdgeInsets.only(bottom: 18.0, top: 8.0),
                     child: Row(
                       children: [
                         Expanded(
@@ -1068,26 +1897,25 @@ void pop_up_modal(BuildContext context) {
                       childAspectRatio: 1.5,
                     ),
                     itemBuilder: (context, index) {
-
                       return InkWell(
-                        onTap: (){
-                          if(index==0){
-                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder){return Payment_in();}));
+                        onTap: () {
+                          if (index == 0) {
+                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder) => Payment_in()));
                           }
-                          if(index==1){
-                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder)=>Add_new_Sales()));
+                          if (index == 1) {
+                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder) => Add_new_Sales()));
                           }
-                          if(index==2){
-                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder)=>Purchase()));
+                          if (index == 2) {
+                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder) => Purchase()));
                           }
-                          if(index==3){
-                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder)=>Payment_Out()));
+                          if (index == 3) {
+                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder) => Payment_Out()));
                           }
-                          if(index==4){
-                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder)=>Expenses()));
+                          if (index == 4) {
+                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder) => Expenses()));
                           }
-                          if(index==5){
-                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder)=>P2P_Transfer()));
+                          if (index == 5) {
+                            Navigator.pushReplacement(context, MaterialPageRoute(builder: (builder) => P2P_Transfer()));
                           }
                         },
                         child: QuickLink(

@@ -15,6 +15,7 @@ class _ReceivableState extends State<Receivable> {
   List<Map<String, dynamic>> receivables = [];
   List<Map<String, dynamic>> filteredReceivables = [];
   TextEditingController searchController = TextEditingController();
+  bool _isLoading = true; // Add loading state
 
   @override
   void initState() {
@@ -23,11 +24,13 @@ class _ReceivableState extends State<Receivable> {
   }
 
   void fetchReceivables() {
-
     User? user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       print("No user logged in");
+      setState(() {
+        _isLoading = false; // Stop loading if no user
+      });
       return;
     }
 
@@ -36,8 +39,8 @@ class _ReceivableState extends State<Receivable> {
     _dbRef.child("users/$userId/Parties").onValue.listen((event) {
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
 
+      List<Map<String, dynamic>> tempList = [];
       if (data != null) {
-        List<Map<String, dynamic>> tempList = [];
         data.forEach((key, value) {
           double totalAmount = double.tryParse(value['total_amount'].toString()) ?? 0;
           if (totalAmount < 0) {
@@ -48,12 +51,13 @@ class _ReceivableState extends State<Receivable> {
             });
           }
         });
-
-        setState(() {
-          receivables = tempList;
-          filteredReceivables = List.from(receivables);
-        });
       }
+
+      setState(() {
+        receivables = tempList;
+        filteredReceivables = List.from(receivables);
+        _isLoading = false; // Data fetched, stop loading
+      });
     });
   }
 
@@ -78,21 +82,24 @@ class _ReceivableState extends State<Receivable> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Receivable", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 20)),
-        backgroundColor: const Color(0xFF0078AA),
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: const Icon(Remix.notification_4_line, color: Colors.white),
-            onPressed: () {},
+        title: const Text(
+          "Receivable",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 20,
           ),
-          IconButton(
-            icon: const Icon(Remix.more_2_line, color: Colors.white),
-            onPressed: () {},
-          ),
-        ],
+        ),
+        backgroundColor: Color(0xFF0078AA),
+        iconTheme: IconThemeData(color: Colors.white),
       ),
-      body: Column(
+      body: _isLoading
+          ? const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0078AA)),
+        ),
+      )
+          : Column(
         children: [
           // Search Bar
           Container(
@@ -131,8 +138,14 @@ class _ReceivableState extends State<Receivable> {
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Party Name", style: TextStyle(fontWeight: FontWeight.bold)),
-                Text("Amount", style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(
+                  "Party Name",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  "Amount",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ],
             ),
           ),
@@ -140,12 +153,18 @@ class _ReceivableState extends State<Receivable> {
           // List of Receivables
           Expanded(
             child: filteredReceivables.isEmpty
-                ? const Center(child: Text("No receivables found", style: TextStyle(fontSize: 16, color: Colors.grey)))
+                ? const Center(
+              child: Text(
+                "No receivables found",
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            )
                 : ListView.builder(
               itemCount: filteredReceivables.length,
               itemBuilder: (context, index) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 12, horizontal: 12),
                   decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(color: Colors.grey.shade300),

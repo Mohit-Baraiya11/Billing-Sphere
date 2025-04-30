@@ -111,28 +111,28 @@ class _PartyDetailsTab extends State<PartyDetailsTab> {
                     ),
                   ),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
                       //import party
-                      QuickLink(
-                        icon: Remix.account_box_line,
-                        label: "Import Party",
-                        backgroundColor: Colors.lightBlue,
-                        onTap: (){
-                          Navigator.push(context, MaterialPageRoute(builder: (context)=>Import_Party()));
-                        },
-                      ),
-
-                      //party statement
-                      QuickLink(
-                        backgroundColor: Colors.lightBlue,
-                        icon: Remix.contacts_line,
-                        label: "Party Statement",
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (context)=>Party_Statement()));
-                        },
-                      ),
-
+                      // QuickLink(
+                      //   icon: Remix.account_box_line,
+                      //   label: "Import Party",
+                      //   backgroundColor: Colors.lightBlue,
+                      //   onTap: (){
+                      //     Navigator.push(context, MaterialPageRoute(builder: (context)=>Import_Party()));
+                      //   },
+                      // ),
+                      //
+                      // //party statement
+                      // QuickLink(
+                      //   backgroundColor: Colors.lightBlue,
+                      //   icon: Remix.contacts_line,
+                      //   label: "Party Statement",
+                      //   onTap: () {
+                      //     Navigator.push(context, MaterialPageRoute(builder: (context)=>Party_Statement()));
+                      //   },
+                      // ),
+                      SizedBox(width: 20,),
                       //show All
                       QuickLink(
                           backgroundColor: Colors.lightBlue,

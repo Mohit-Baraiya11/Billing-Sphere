@@ -141,70 +141,12 @@ class SaleReport extends State<Sale_Report> {
         backgroundColor: Colors.white,
         bottom: Prefered_underline_appbar(),
         title: Text('Sale Report', style: TextStyle(color: Colors.black)),
-        actions: [
-          Container(
-            height: 25,
-            width: 25,
-            child: Image.asset("Assets/Images/pdf.png"),
-          ),
-          SizedBox(width: 10,),
-        ],
       ),
       body: Container(
         color: Colors.white,
         child: Column(
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.only(left: 8.0, right: 8.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      GestureDetector(
-                        onTap: _showTimeDurationBottomSheet,
-                        child: Row(
-                          children: [
-                            Text(_selectedDuration),
-                            SizedBox(width: 10,),
-                            Icon(Icons.arrow_drop_down),
-                          ],
-                        ),
-                      ),
-                      VerticalDivider(thickness: 1,),
-                      Row(
-                        children: [
-                          Icon(Remix.calendar_2_line, size: 16, color: Colors.blue,),
-                          SizedBox(width: 10,),
-                          Text("Date", style: TextStyle(fontSize: 16)),
-                          TextButton(
-                            onPressed: () async {
-                              DateTime? selectedDate = await showDatePicker(
-                                context: context,
-                                initialDate: DateTime.now(),
-                                firstDate: DateTime(2000),
-                                lastDate: DateTime(2100),
-                              );
-                              if (selectedDate != null) {
-                                setState(() {
-                                  time = selectedDate;
-                                });
-                                fetchSales(selectedDate: selectedDate); // Apply date filter
-                              }
-                            },
-                            child: Text(
-                              "${time.day}/${time.month}/${time.year}",
-                              style: TextStyle(fontSize: 16,),
-                            ),
-                          ),
-                        ],
-                      )
-                    ],
-                  ),
-                ),
-              ],
-            ),
+
             Expanded(
               child: Container(
                 height: double.infinity,

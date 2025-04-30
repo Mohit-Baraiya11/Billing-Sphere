@@ -79,6 +79,70 @@ class _ItemsDetailState extends State<Items_Details> {
     }
   }
 
+  // Method to show delete confirmation dialog
+  void _showDeleteConfirmationDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          backgroundColor: Colors.white,
+          title: Text("Delete Item"),
+          content: Text("Are you sure you want to delete this item? This action cannot be undone."),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close the dialog
+              },
+              child: Text("No", style: TextStyle(color: Colors.black)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close the dialog
+                _deleteItem(); // Call the delete function
+              },
+              child: Text("Yes", style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Method to delete the item from Firebase
+  Future<void> _deleteItem() async {
+    try {
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        print("No user logged in");
+        return;
+      }
+
+      String userId = user.uid;
+      DatabaseReference itemRef = FirebaseDatabase.instance
+          .ref("users/$userId/Items/${widget.itemId}");
+
+      // Delete the item from Firebase
+      await itemRef.remove();
+      print("Item deleted successfully");
+
+      // Show confirmation message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Item deleted successfully!")),
+      );
+
+      // Navigate back to the previous screen
+      Navigator.pop(context);
+    } catch (error) {
+      print("Error deleting item: $error");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to delete item!")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Calculate stock value
@@ -105,8 +169,10 @@ class _ItemsDetailState extends State<Items_Details> {
             ),
           ),
           IconButton(
-            icon: Icon(Remix.pencil_line, color: Colors.blue),
-            onPressed: () {},
+            icon: Icon(Remix.delete_bin_line, color: Colors.blue),
+            onPressed: () {
+              _showDeleteConfirmationDialog(); // Show confirmation dialog on delete icon click
+            },
           ),
         ],
       ),
@@ -232,7 +298,7 @@ class _ItemsDetailState extends State<Items_Details> {
                   ListView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    itemCount: itemData['transactions'].length, 
+                    itemCount: itemData['transactions'].length,
                     itemBuilder: (context, index) {
                       var transaction = itemData['transactions'][index];
                       return Padding(
@@ -262,7 +328,6 @@ class _ItemsDetailState extends State<Items_Details> {
                       );
                     },
                   ),
-
                 ],
               ),
             ),

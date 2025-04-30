@@ -15,6 +15,7 @@ class _PayableState extends State<Payable> {
   List<Map<String, dynamic>> payables = [];
   List<Map<String, dynamic>> filteredPayables = [];
   TextEditingController searchController = TextEditingController();
+  bool _isLoading = true; // Add loading state
 
   @override
   void initState() {
@@ -27,6 +28,9 @@ class _PayableState extends State<Payable> {
 
     if (user == null) {
       print("No user logged in");
+      setState(() {
+        _isLoading = false; // Stop loading if no user
+      });
       return;
     }
 
@@ -35,8 +39,8 @@ class _PayableState extends State<Payable> {
     _dbRef.child("users/$userId/Parties").onValue.listen((event) {
       final data = event.snapshot.value as Map<dynamic, dynamic>?;
 
+      List<Map<String, dynamic>> tempList = [];
       if (data != null) {
-        List<Map<String, dynamic>> tempList = [];
         data.forEach((key, value) {
           double totalAmount = double.tryParse(value['total_amount'].toString()) ?? 0;
           if (totalAmount > 0) {
@@ -47,12 +51,13 @@ class _PayableState extends State<Payable> {
             });
           }
         });
-
-        setState(() {
-          payables = tempList;
-          filteredPayables = List.from(payables);
-        });
       }
+
+      setState(() {
+        payables = tempList;
+        filteredPayables = List.from(payables);
+        _isLoading = false; // Data fetched, stop loading
+      });
     });
   }
 
@@ -77,21 +82,24 @@ class _PayableState extends State<Payable> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("Payable", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 20)),
+        title: const Text(
+          "Payable",
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 20,
+          ),
+        ),
         backgroundColor: const Color(0xFF0078AA),
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            icon: const Icon(Remix.notification_4_line, color: Colors.white),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Remix.more_2_line, color: Colors.white),
-            onPressed: () {},
-          ),
-        ],
       ),
-      body: Column(
+      body: _isLoading
+          ? const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0078AA)),
+        ),
+      )
+          : Column(
         children: [
           // Search Bar
           Container(
@@ -130,8 +138,14 @@ class _PayableState extends State<Payable> {
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Party Name", style: TextStyle(fontWeight: FontWeight.bold)),
-                Text("Amount", style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(
+                  "Party Name",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  "Amount",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
               ],
             ),
           ),
@@ -139,12 +153,18 @@ class _PayableState extends State<Payable> {
           // List of Payables
           Expanded(
             child: filteredPayables.isEmpty
-                ? const Center(child: Text("No payables found", style: TextStyle(fontSize: 16, color: Colors.grey)))
+                ? const Center(
+              child: Text(
+                "No payables found",
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            )
                 : ListView.builder(
               itemCount: filteredPayables.length,
               itemBuilder: (context, index) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 12, horizontal: 12),
                   decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(color: Colors.grey.shade300),

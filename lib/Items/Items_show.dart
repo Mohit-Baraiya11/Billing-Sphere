@@ -1,18 +1,22 @@
-import 'package:billing_sphere/Items/Add_new_item.dart';
-import 'package:billing_sphere/Items/Items_Details.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_database/firebase_database.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:remixicon/remixicon.dart';
+
+import 'Add_new_item.dart';
+import 'Items_Details.dart';
 
 class Items_show extends StatefulWidget {
   @override
   State<Items_show> createState() => _ItemsShowState();
 }
-
 class _ItemsShowState extends State<Items_show> {
   List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _filteredItems = []; // New list for filtered items
   bool _isLoading = true;
+  String _searchQuery = ''; // Store the search query
 
   @override
   void initState() {
@@ -35,16 +39,16 @@ class _ItemsShowState extends State<Items_show> {
         Map<dynamic, dynamic> data = event.snapshot.value as Map<dynamic, dynamic>;
         setState(() {
           _items = [];
+          _filteredItems = []; // Initialize filtered list
 
           data.forEach((key, value) {
             try {
               if (value is! Map<dynamic, dynamic>) return;
 
-              // Extract data correctly
               final basicInfo = value['basicInfo'] ?? {};
               final pricing = value['pricing'] ?? {};
               final stock = value['stock'] ?? {};
-              final category = basicInfo['category'] ?? {};  // Extract category
+              final category = basicInfo['category'] ?? {};
 
               _items.add({
                 'id': key.toString(),
@@ -54,13 +58,14 @@ class _ItemsShowState extends State<Items_show> {
                 'purchasePrice': pricing['purchasePrice'] ?? 0.0,
                 'openingStock': stock['openingStock'] ?? 0,
                 'location': stock['location'] ?? '',
-                'categoryName': category['name'] ?? 'No Category',  // Store category name
+                'categoryName': category['name'] ?? 'No Category',
               });
             } catch (e) {
               print('Error processing item $key: $e');
             }
           });
 
+          _filteredItems = _items; // Initially, filtered list is same as full list
           _isLoading = false;
         });
       } else {
@@ -73,6 +78,21 @@ class _ItemsShowState extends State<Items_show> {
         SnackBar(content: Text("Failed to load items")),
       );
     }
+  }
+
+  // Function to filter items based on search query
+  void _filterItems(String query) {
+    setState(() {
+      _searchQuery = query;
+      if (query.isEmpty) {
+        _filteredItems = _items; // Show all items if query is empty
+      } else {
+        _filteredItems = _items.where((item) {
+          final itemName = item['itemName']?.toLowerCase() ?? '';
+          return itemName.contains(query.toLowerCase());
+        }).toList();
+      }
+    });
   }
 
   @override
@@ -91,11 +111,10 @@ class _ItemsShowState extends State<Items_show> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    SizedBox(
-                        child: Image.asset("Assets/Gif/not_found.gif")
-                    ),
+                    SizedBox(child: Image.asset("Assets/Gif/not_found.gif")),
                     Text(
-                      "There are no items added", style: TextStyle(fontSize: 16,color: Colors.blue),
+                      "There are no items added",
+                      style: TextStyle(fontSize: 16, color: Colors.blue),
                     ),
                   ],
                 ),
@@ -117,15 +136,20 @@ class _ItemsShowState extends State<Items_show> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: TextField(
+                              onChanged: _filterItems, // Call filter function on text change
                               decoration: InputDecoration(
-                                prefixIcon: Icon(Remix.search_2_line,color: Colors.blueAccent,size: 20,),
+                                prefixIcon: Icon(
+                                  Remix.search_2_line,
+                                  color: Colors.blueAccent,
+                                  size: 20,
+                                ),
                                 hintText: "Search items",
                                 border: InputBorder.none,
                               ),
                             ),
                           ),
                         ),
-                        SizedBox(width: 10,),
+                        SizedBox(width: 10),
                         Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
@@ -133,24 +157,24 @@ class _ItemsShowState extends State<Items_show> {
                           ),
                           width: 45,
                           height: 45,
-                          child: Icon(Remix.filter_2_line,color: Colors.blueAccent,),
+                          child: Icon(Remix.filter_2_line, color: Colors.blueAccent),
                         ),
                       ],
                     ),
                   ),
-                  SizedBox(height: 10,),
+                  SizedBox(height: 10),
                   Expanded(
                     child: ListView.builder(
-                      itemCount: _items.length,
+                      itemCount: _filteredItems.length, // Use filtered list
                       itemBuilder: (context, index) {
-                        final item = _items[index];
+                        final item = _filteredItems[index]; // Use filtered list
 
                         return GestureDetector(
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => Items_Details(itemId: item['id'].toString()), // Corrected
+                                builder: (context) => Items_Details(itemId: item['id'].toString()),
                               ),
                             );
                           },
@@ -232,53 +256,53 @@ class _ItemsShowState extends State<Items_show> {
                                       ),
                                       Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            "Purchase Price",
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.grey,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          SizedBox(height: 4),
-                                          Text(
-                                            "₹ ${(item['purchasePrice'] ?? 0).toStringAsFixed(2)}",
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
+                                      children: [
+                                      Text(
+                                        "Purchase Price",
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            "In Stock",
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.grey,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          SizedBox(height: 4),
-                                          Text(
-                                            (item['openingStock'] ?? 0).toString(),
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.green,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ],
+                                      SizedBox(height: 4),
+                                      Text(
+                                        "₹ ${(item['purchasePrice'] ?? 0).toStringAsFixed(2)}",
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        "In Stock",
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        (item['openingStock'] ?? 0).toString(),
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.green,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ],
                               ),
+                              ],
                             ),
                           ),
+                        ),
                         );
                       },
                     ),
@@ -296,7 +320,7 @@ class _ItemsShowState extends State<Items_show> {
                     backgroundColor: Colors.red,
                   ),
                   onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context)=>Add_new_item()));
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => Add_new_item()));
                   },
                   child: SizedBox(
                     width: 150,
