@@ -358,7 +358,6 @@ class Verifying_Otp extends StatefulWidget {
   @override
   State<StatefulWidget> createState() => VerifyingOtp();
 }
-
 class VerifyingOtp extends State<Verifying_Otp> {
   TextEditingController _OtpeController = TextEditingController();
   FocusNode _OtpFocusNode = FocusNode();
